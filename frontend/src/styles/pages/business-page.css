@@ -1,0 +1,176 @@
+.business-page {
+  position: relative;
+  padding: 2rem 1.25rem 5rem;
+}
+
+.business-page__ambient {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 26rem;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 18% 20%, rgba(207, 168, 125, 0.14), transparent 18rem),
+    radial-gradient(circle at 82% 14%, rgba(255, 255, 255, 0.08), transparent 14rem);
+}
+
+.business-page__shell {
+  position: relative;
+  z-index: 1;
+  max-width: 86rem;
+  margin: 0 auto;
+}
+
+.business-page__hero {
+  display: grid;
+  gap: 1.5rem;
+  padding: 1.4rem 0 2rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.business-page__eyebrow,
+.business-page__aside-label,
+.business-page__section-index {
+  margin: 0;
+  color: var(--color-champagne-bright);
+  font-size: 0.68rem;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+}
+
+.business-page__title {
+  margin: 0.9rem 0 0;
+  max-width: 42rem;
+  color: var(--color-pearl);
+  font-family: var(--font-display);
+  font-size: clamp(2.5rem, 6vw, 4.8rem);
+  line-height: 0.95;
+}
+
+.business-page__lead,
+.business-page__aside-copy,
+.business-page__section-copy,
+.business-page__list-item {
+  color: var(--color-smoke);
+  line-height: 1.9;
+}
+
+.business-page__lead {
+  max-width: 38rem;
+  margin: 1rem 0 0;
+  font-size: 1rem;
+}
+
+.business-page__aside {
+  display: grid;
+  gap: 0.8rem;
+  align-content: start;
+  padding: 1.2rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.6rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent),
+    rgba(10, 12, 17, 0.84);
+}
+
+.business-page__aside-copy {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.business-page__aside-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: fit-content;
+  padding: 0.8rem 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--color-pearl);
+  font-size: 0.68rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  transition:
+    transform var(--motion-fast),
+    border-color var(--motion-fast),
+    color var(--motion-fast);
+}
+
+.business-page__aside-link:hover {
+  transform: translateY(-1px);
+  border-color: rgba(207, 168, 125, 0.42);
+  color: var(--color-champagne-bright);
+}
+
+.business-page__aside-icon {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.business-page__sections {
+  display: grid;
+  gap: 0;
+  padding-top: 1rem;
+}
+
+.business-page__section {
+  display: grid;
+  gap: 1rem;
+  padding: 1.5rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.business-page__section-title {
+  margin: 0;
+  color: var(--color-pearl);
+  font-family: var(--font-display);
+  font-size: clamp(1.65rem, 4vw, 2.35rem);
+  line-height: 1.02;
+}
+
+.business-page__section-copy {
+  max-width: 42rem;
+  margin: 0.9rem 0 0;
+  font-size: 1rem;
+}
+
+.business-page__list {
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.business-page__list-item {
+  position: relative;
+  padding-left: 1rem;
+}
+
+.business-page__list-item::before {
+  content: "";
+  position: absolute;
+  top: 0.8rem;
+  left: 0;
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 50%;
+  background: var(--color-champagne);
+}
+
+@media (min-width: 720px) {
+  .business-page {
+    padding-inline: 2rem;
+  }
+}
+
+@media (min-width: 1080px) {
+  .business-page__hero {
+    grid-template-columns: minmax(0, 1fr) minmax(20rem, 0.84fr);
+    align-items: end;
+  }
+
+  .business-page__section {
+    grid-template-columns: 6rem minmax(0, 1fr);
+  }
+}

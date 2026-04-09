@@ -1,0 +1,2873 @@
+import {
+  startTransition,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from "react";
+import { motion } from "framer-motion";
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  Boxes,
+  CirclePlus,
+  Download,
+  LayoutDashboard,
+  Package,
+  PencilLine,
+  Printer,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  ShoppingBag,
+  Trash2,
+  Truck,
+} from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
+
+import { storefrontApi } from "../services/api";
+import { useStorefront } from "../storefront/storefront-context";
+import type {
+  CreateProductPayload,
+  OrderRecord,
+  OrderStatus,
+  PaymentStatus,
+  ProductRecord,
+  ProductVariantInput,
+  ProductVariant,
+  ShippingStatus,
+  UpdateOrderPayload,
+} from "../shared";
+import "../styles/pages/orders-page.css";
+
+interface OrdersLocationState {
+  cartCheckoutMessage?: string;
+}
+
+interface ProductVariantDraft {
+  color: string;
+  discountPrice: string;
+  id?: string;
+  price: string;
+  size: string;
+  sku: string;
+  stockQuantity: string;
+}
+
+interface ProductFormState {
+  brandId: string;
+  categoryId: string;
+  description: string;
+  images: string[];
+  name: string;
+  type: string;
+  variants: ProductVariantDraft[];
+}
+
+interface SalesSeriesPoint {
+  count: number;
+  key: string;
+  label: string;
+  revenue: number;
+}
+
+interface DonutSegment {
+  color: string;
+  label: string;
+  value: number;
+}
+
+interface AdminMetric {
+  detail: string;
+  icon: typeof ShoppingBag;
+  label: string;
+  tone: "default" | "positive" | "negative";
+  trendLabel: string;
+  value: string;
+}
+
+interface VariantLookupEntry {
+  productId: string;
+  productName: string;
+  sku: string;
+  variant: ProductVariant;
+}
+
+const PRODUCT_IMAGE_ACCEPT = ".png,.jpg,.jpeg,image/png,image/jpeg";
+const PRODUCT_IMAGE_MAX_BYTES = 4 * 1024 * 1024;
+const PRODUCT_IMAGE_TYPES = new Set(["image/png", "image/jpeg"]);
+const EMBEDDED_IMAGE_OPAQUE_OUTPUT_TYPE = "image/jpeg";
+const EMBEDDED_IMAGE_TRANSPARENT_OUTPUT_TYPE = "image/webp";
+const EMBEDDED_IMAGE_MAX_DIMENSION = 1400;
+const EMBEDDED_IMAGE_MAX_CHARS = 180_000;
+const EMBEDDED_IMAGE_MIN_QUALITY = 0.42;
+const EMBEDDED_IMAGE_TOTAL_MAX_CHARS = 600_000;
+
+function readImageFile(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error(`Unable to decode ${file.name}.`));
+    };
+
+    image.src = objectUrl;
+  });
+}
+
+function fitImageWithinBounds(
+  width: number,
+  height: number,
+  maxDimension: number,
+): { height: number; width: number } {
+  const scale = Math.min(1, maxDimension / Math.max(width, height));
+
+  return {
+    height: Math.max(1, Math.round(height * scale)),
+    width: Math.max(1, Math.round(width * scale)),
+  };
+}
+
+async function fileToEmbeddedProductImage(file: File): Promise<string> {
+  const image = await readImageFile(file);
+  const preserveTransparency = file.type === "image/png";
+  const outputType = preserveTransparency
+    ? EMBEDDED_IMAGE_TRANSPARENT_OUTPUT_TYPE
+    : EMBEDDED_IMAGE_OPAQUE_OUTPUT_TYPE;
+  let { width, height } = fitImageWithinBounds(
+    image.naturalWidth || image.width,
+    image.naturalHeight || image.height,
+    EMBEDDED_IMAGE_MAX_DIMENSION,
+  );
+  let quality = 0.82;
+
+  while (true) {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      throw new Error("Your browser could not prepare this image.");
+    }
+
+    if (!preserveTransparency) {
+      context.fillStyle = "#0b0d14";
+      context.fillRect(0, 0, width, height);
+    }
+
+    context.drawImage(image, 0, 0, width, height);
+
+    const dataUrl = canvas.toDataURL(outputType, quality);
+    const exportedAsLosslessPng =
+      preserveTransparency && dataUrl.startsWith("data:image/png");
+
+    if (dataUrl.length <= EMBEDDED_IMAGE_MAX_CHARS) {
+      return dataUrl;
+    }
+
+    if (!exportedAsLosslessPng && quality > EMBEDDED_IMAGE_MIN_QUALITY) {
+      quality = Math.max(EMBEDDED_IMAGE_MIN_QUALITY, quality - 0.08);
+      continue;
+    }
+
+    if (Math.max(width, height) <= 720) {
+      break;
+    }
+
+    width = Math.max(1, Math.round(width * 0.85));
+    height = Math.max(1, Math.round(height * 0.85));
+    quality = 0.82;
+  }
+
+  throw new Error(
+    `${file.name} is still too large after compression. Try a smaller image.`,
+  );
+}
+
+function FieldLabel({
+  label,
+  optional = false,
+  required = false,
+}: {
+  label: string;
+  optional?: boolean;
+  required?: boolean;
+}) {
+  return (
+    <span className="operations-field__label">
+      <span className="operations-field__label-text">{label}</span>
+      {required ? (
+        <span className="operations-field__badge operations-field__badge--required">
+          Required
+        </span>
+      ) : null}
+      {!required && optional ? (
+        <span className="operations-field__badge operations-field__badge--optional">
+          Optional
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function FieldHint({
+  fallback,
+  fallbackTone = "muted",
+  message,
+}: {
+  fallback?: string;
+  fallbackTone?: "accent" | "muted";
+  message?: string | null;
+}) {
+  if (message) {
+    return (
+      <p className="operations-field__hint operations-field__hint--error">
+        {message}
+      </p>
+    );
+  }
+
+  if (fallback) {
+    return (
+      <p
+        className={`operations-field__hint ${
+          fallbackTone === "accent" ? "operations-field__hint--accent" : ""
+        }`}
+      >
+        {fallback}
+      </p>
+    );
+  }
+
+  return (
+    <p
+      aria-hidden="true"
+      className="operations-field__hint operations-field__hint--placeholder"
+    >
+      &nbsp;
+    </p>
+  );
+}
+
+const ORDER_STATUS_OPTIONS: OrderStatus[] = [
+  "pending",
+  "confirmed",
+  "paid",
+  "processing",
+  "shipped",
+  "delivered",
+  "cancelled",
+];
+
+const PAYMENT_STATUS_OPTIONS: PaymentStatus[] = [
+  "pending",
+  "authorized",
+  "paid",
+  "failed",
+  "refunded",
+];
+
+const SHIPPING_STATUS_OPTIONS: ShippingStatus[] = [
+  "pending",
+  "packed",
+  "in_transit",
+  "delivered",
+  "returned",
+];
+
+const ADMIN_SECTIONS = [
+  {
+    description: "KPI, revenue trend, and live queue.",
+    href: "#operations-overview",
+    icon: LayoutDashboard,
+    label: "Overview",
+  },
+  {
+    description: "Order ledger and status controls.",
+    href: "#operations-orders",
+    icon: ShoppingBag,
+    label: "Orders",
+  },
+  {
+    description: "Catalog editor synced.",
+    href: "#operations-products",
+    icon: Package,
+    label: "Products",
+  },
+  {
+    description: "Print-ready sales report and CSV export.",
+    href: "#operations-export",
+    icon: Download,
+    label: "Exports",
+  },
+];
+
+function createEmptyVariantDraft(): ProductVariantDraft {
+  return {
+    color: "",
+    discountPrice: "",
+    price: "",
+    size: "",
+    sku: "",
+    stockQuantity: "",
+  };
+}
+
+function createEmptyProductForm(): ProductFormState {
+  return {
+    brandId: "",
+    categoryId: "",
+    description: "",
+    images: [],
+    name: "",
+    type: "",
+    variants: [createEmptyVariantDraft()],
+  };
+}
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    currency: "USD",
+    maximumFractionDigits: 0,
+    style: "currency",
+  }).format(value);
+}
+
+function formatDateTime(value: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+function formatStatusLabel(value: string | undefined): string {
+  if (!value) {
+    return "Pending";
+  }
+
+  return value
+    .split(/[_\s-]+/g)
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
+}
+
+function humanizeToken(value: string): string {
+  return formatStatusLabel(value);
+}
+
+function normalizeSkuSegment(
+  value: string,
+  fallback: string,
+  maxLength: number,
+): string {
+  const cleaned = value.toUpperCase().replace(/[^A-Z0-9]+/g, "");
+
+  if (cleaned.length > 0) {
+    return cleaned.slice(0, maxLength);
+  }
+
+  return fallback.slice(0, maxLength);
+}
+
+function buildGeneratedSku(
+  form: ProductFormState,
+  variant: ProductVariantDraft,
+  index: number,
+): string {
+  const brand = normalizeSkuSegment(form.brandId || form.name, "BRND", 4);
+  const product = normalizeSkuSegment(form.name || form.type, "WATCH", 5);
+  const color = normalizeSkuSegment(variant.color, "CLR", 3);
+  const size = normalizeSkuSegment(variant.size, "STD", 3);
+
+  return [brand, product, color, size, String(index + 1).padStart(2, "0")].join(
+    "-",
+  );
+}
+
+function requiredFieldMessage(value: string, label: string): string | null {
+  return value.trim().length > 0 ? null : `${label} is required.`;
+}
+
+function numericFieldMessage(
+  value: string,
+  label: string,
+  {
+    allowEmpty = false,
+    integerOnly = false,
+  }: { allowEmpty?: boolean; integerOnly?: boolean } = {},
+): string | null {
+  if (value.trim().length === 0) {
+    return allowEmpty ? null : `${label} is required.`;
+  }
+
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue) || numericValue < 0) {
+    return `${label} must be a non-negative number.`;
+  }
+
+  if (integerOnly && !Number.isInteger(numericValue)) {
+    return `${label} must be a whole number.`;
+  }
+
+  return null;
+}
+
+function descriptionFieldMessage(value: string): string | null {
+  if (value.trim().length === 0) {
+    return "Description is required.";
+  }
+
+  if (value.trim().length < 10) {
+    return "Use at least 10 characters.";
+  }
+
+  return null;
+}
+
+function imageFieldMessage(images: string[]): string | null {
+  return images.length > 0 ? null : "Add at least one product image.";
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  return `${Math.round(bytes / 1024)} KB`;
+}
+
+function productStartingPrice(product: ProductRecord): number {
+  return product.variants.reduce((lowestPrice, variant) => {
+    return Math.min(lowestPrice, variant.discountPrice ?? variant.price);
+  }, Number.POSITIVE_INFINITY);
+}
+
+function productStock(product: ProductRecord): number {
+  return product.variants.reduce(
+    (total, variant) => total + variant.stockQuantity,
+    0,
+  );
+}
+
+function productStockTone(
+  product: ProductRecord,
+): "healthy" | "attention" | "critical" {
+  const stock = productStock(product);
+
+  if (stock <= 0) {
+    return "critical";
+  }
+
+  if (stock <= 6) {
+    return "attention";
+  }
+
+  return "healthy";
+}
+
+function createProductForm(product: ProductRecord): ProductFormState {
+  return {
+    brandId: product.brandId,
+    categoryId: product.categoryId,
+    description: product.description,
+    images: [...product.images],
+    name: product.name,
+    type: product.type,
+    variants: product.variants.map((variant) => ({
+      color: variant.color,
+      discountPrice:
+        variant.discountPrice === null ? "" : String(variant.discountPrice),
+      id: variant.id,
+      price: String(variant.price),
+      size: variant.size,
+      sku: variant.sku,
+      stockQuantity: String(variant.stockQuantity),
+    })),
+  };
+}
+
+function parseVariants(
+  variants: ProductVariantDraft[],
+  form: ProductFormState,
+): ProductVariantInput[] {
+  const parsed = variants.map((variant, index) => {
+    const generatedSku = buildGeneratedSku(form, variant, index);
+    const price = Number(variant.price);
+    const stockQuantity = Number(variant.stockQuantity);
+    const discountPriceValue = variant.discountPrice.trim();
+    const discountPrice =
+      discountPriceValue.length > 0 ? Number(discountPriceValue) : null;
+
+    if (!variant.color.trim()) {
+      throw new Error(`Variant ${index + 1}: color is required.`);
+    }
+
+    if (!variant.size.trim()) {
+      throw new Error(`Variant ${index + 1}: size is required.`);
+    }
+
+    if (!Number.isFinite(price) || price < 0) {
+      throw new Error(
+        `Variant ${index + 1}: price must be a non-negative number.`,
+      );
+    }
+
+    if (!Number.isInteger(stockQuantity) || stockQuantity < 0) {
+      throw new Error(
+        `Variant ${index + 1}: stock must be a non-negative integer.`,
+      );
+    }
+
+    if (
+      discountPrice !== null &&
+      (!Number.isFinite(discountPrice) || discountPrice < 0)
+    ) {
+      throw new Error(
+        `Variant ${index + 1}: discount price must be blank or a non-negative number.`,
+      );
+    }
+
+    return {
+      color: variant.color.trim(),
+      discountPrice,
+      id: variant.id,
+      price,
+      size: variant.size.trim(),
+      sku: variant.sku.trim() || generatedSku,
+      stockQuantity,
+    };
+  });
+
+  if (parsed.length === 0) {
+    throw new Error("Add at least one variant before saving.");
+  }
+
+  return parsed;
+}
+
+function buildProductPayload(form: ProductFormState): CreateProductPayload {
+  const images = form.images.map((image) => image.trim()).filter(Boolean);
+
+  if (!form.categoryId.trim()) {
+    throw new Error("Category ID is required.");
+  }
+
+  if (!form.brandId.trim()) {
+    throw new Error("Brand ID is required.");
+  }
+
+  if (!form.name.trim()) {
+    throw new Error("Product name is required.");
+  }
+
+  if (!form.type.trim()) {
+    throw new Error("Product type is required.");
+  }
+
+  if (form.description.trim().length < 10) {
+    throw new Error("Description should be at least 10 characters.");
+  }
+
+  if (images.length === 0) {
+    throw new Error("At least one product image is required.");
+  }
+
+  return {
+    brandId: form.brandId.trim(),
+    categoryId: form.categoryId.trim(),
+    description: form.description.trim(),
+    images,
+    name: form.name.trim(),
+    type: form.type.trim(),
+    variants: parseVariants(form.variants, form),
+  };
+}
+
+function sortProductsForAdmin(products: ProductRecord[]): ProductRecord[] {
+  return [...products].sort((left, right) => {
+    return (
+      new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
+    );
+  });
+}
+
+function percentChange(
+  currentValue: number,
+  previousValue: number,
+): number | null {
+  if (previousValue === 0) {
+    return currentValue === 0 ? 0 : null;
+  }
+
+  return ((currentValue - previousValue) / previousValue) * 100;
+}
+
+function monthKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function buildSalesSeries(orders: OrderRecord[]): SalesSeriesPoint[] {
+  const today = new Date();
+  const points: SalesSeriesPoint[] = [];
+
+  for (let offset = 5; offset >= 0; offset -= 1) {
+    const date = new Date(today.getFullYear(), today.getMonth() - offset, 1);
+    const key = monthKey(date);
+    const label = new Intl.DateTimeFormat("en-US", {
+      month: "short",
+    }).format(date);
+
+    points.push({
+      count: 0,
+      key,
+      label,
+      revenue: 0,
+    });
+  }
+
+  const pointMap = new Map(points.map((point) => [point.key, point]));
+
+  orders.forEach((order) => {
+    if (order.status === "cancelled") {
+      return;
+    }
+
+    const key = monthKey(new Date(order.createdAt));
+    const point = pointMap.get(key);
+
+    if (!point) {
+      return;
+    }
+
+    point.count += 1;
+    point.revenue += order.totalAmount;
+  });
+
+  return points;
+}
+
+function buildStatusSegments(orders: OrderRecord[]): DonutSegment[] {
+  const paid = orders.filter(
+    (order) => order.payment?.status === "paid" || order.status === "delivered",
+  ).length;
+  const inFlight = orders.filter((order) =>
+    ["pending", "confirmed", "paid", "processing", "shipped"].includes(
+      order.status,
+    ),
+  ).length;
+  const exceptions = orders.filter(
+    (order) =>
+      order.status === "cancelled" ||
+      order.payment?.status === "failed" ||
+      order.payment?.status === "refunded",
+  ).length;
+
+  return [
+    { color: "var(--operations-gold)", label: "Captured", value: paid },
+    { color: "var(--operations-blue)", label: "In flow", value: inFlight },
+    { color: "var(--operations-red)", label: "Exceptions", value: exceptions },
+  ];
+}
+
+function createDonutBackground(segments: DonutSegment[]): string {
+  const total = segments.reduce((sum, segment) => sum + segment.value, 0);
+
+  if (total <= 0) {
+    return "conic-gradient(rgba(255, 255, 255, 0.12) 0deg 360deg)";
+  }
+
+  let currentStop = 0;
+  const stops = segments.map((segment) => {
+    const segmentSize = (segment.value / total) * 360;
+    const start = currentStop;
+    const end = currentStop + segmentSize;
+    currentStop = end;
+    return `${segment.color} ${start}deg ${end}deg`;
+  });
+
+  return `conic-gradient(${stops.join(", ")})`;
+}
+
+function buildVariantLookup(
+  products: ProductRecord[],
+): Map<string, VariantLookupEntry> {
+  const lookup = new Map<string, VariantLookupEntry>();
+
+  products.forEach((product) => {
+    product.variants.forEach((variant) => {
+      lookup.set(variant.id, {
+        productId: product.id,
+        productName: product.name,
+        sku: variant.sku,
+        variant,
+      });
+    });
+  });
+
+  return lookup;
+}
+
+function buildOrderItemSummary(
+  order: OrderRecord,
+  variantLookup: Map<string, VariantLookupEntry>,
+): string {
+  const labels = order.items.map((item) => {
+    const variant = variantLookup.get(item.productVariantId);
+
+    if (!variant) {
+      return `Variant ${item.productVariantId.slice(0, 6)} x${item.quantity}`;
+    }
+
+    return `${variant.productName} (${variant.sku}) x${item.quantity}`;
+  });
+
+  return labels.join(", ");
+}
+
+function csvEscape(value: string | number | null | undefined): string {
+  const normalized = value === undefined || value === null ? "" : String(value);
+
+  if (!/[",\n]/.test(normalized)) {
+    return normalized;
+  }
+
+  return `"${normalized.replaceAll('"', '""')}"`;
+}
+
+function buildSalesCsv(
+  orders: OrderRecord[],
+  variantLookup: Map<string, VariantLookupEntry>,
+): string {
+  const header = [
+    "order_number",
+    "created_at",
+    "updated_at",
+    "customer_id",
+    "shipping_address",
+    "status",
+    "payment_status",
+    "payment_method",
+    "shipping_status",
+    "courier",
+    "tracking_number",
+    "item_count",
+    "items",
+    "total_amount",
+  ];
+
+  const rows = orders.map((order) => [
+    order.orderNumber,
+    order.createdAt,
+    order.updatedAt,
+    order.customerId,
+    order.shippingAddress,
+    order.status,
+    order.payment?.status ?? "",
+    order.payment?.method ?? "",
+    order.shipping?.status ?? "",
+    order.shipping?.courierName ?? "",
+    order.shipping?.trackingNumber ?? "",
+    order.items.reduce((sum, item) => sum + item.quantity, 0),
+    buildOrderItemSummary(order, variantLookup),
+    order.totalAmount.toFixed(2),
+  ]);
+
+  return [header, ...rows]
+    .map((row) => row.map((cell) => csvEscape(cell)).join(","))
+    .join("\n");
+}
+
+function downloadCsv(filename: string, csv: string): void {
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const objectUrl = window.URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  anchor.style.display = "none";
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  window.URL.revokeObjectURL(objectUrl);
+}
+
+async function fetchOperationsData(
+  includeProducts: boolean,
+): Promise<{ orders: OrderRecord[]; products: ProductRecord[] }> {
+  const [orders, products] = await Promise.all([
+    storefrontApi.getOrders(),
+    includeProducts ? storefrontApi.getProducts() : Promise.resolve([]),
+  ]);
+
+  return { orders, products };
+}
+
+function resolveMetricTone(
+  change: number | null,
+): "default" | "positive" | "negative" {
+  if (change === null || change === 0) {
+    return "default";
+  }
+
+  return change > 0 ? "positive" : "negative";
+}
+
+function formatTrendLabel(change: number | null): string {
+  if (change === null) {
+    return "First live period";
+  }
+
+  if (change === 0) {
+    return "Flat vs last month";
+  }
+
+  const sign = change > 0 ? "+" : "";
+  return `${sign}${change.toFixed(1)}% vs last month`;
+}
+
+function AdminMetricCard({
+  detail,
+  icon: Icon,
+  label,
+  tone,
+  trendLabel,
+  value,
+}: AdminMetric) {
+  return (
+    <div className="operations-metric-card">
+      <div className="operations-metric-card__head">
+        <span>{label}</span>
+        <Icon className="operations-metric-card__icon" />
+      </div>
+      <strong>{value}</strong>
+      <p className="operations-metric-card__detail">{detail}</p>
+      <p
+        className={`operations-metric-card__trend operations-metric-card__trend--${tone}`}
+      >
+        {tone === "positive" ? <ArrowUpRight size={14} /> : null}
+        {tone === "negative" ? <ArrowDownRight size={14} /> : null}
+        {trendLabel}
+      </p>
+    </div>
+  );
+}
+
+function SalesBars({ points }: { points: SalesSeriesPoint[] }) {
+  const maxRevenue = Math.max(...points.map((point) => point.revenue), 1);
+
+  return (
+    <div className="operations-chart">
+      {points.map((point) => {
+        const revenueHeight = `${Math.max((point.revenue / maxRevenue) * 100, 8)}%`;
+        const orderHeight = `${Math.max((point.count / Math.max(...points.map((entry) => entry.count), 1)) * 100, 12)}%`;
+
+        return (
+          <div key={point.key} className="operations-chart__column">
+            <div className="operations-chart__bar-stack">
+              <div
+                className="operations-chart__bar operations-chart__bar--ghost"
+                style={{ height: orderHeight }}
+                title={`${point.count} orders`}
+              />
+              <div
+                className="operations-chart__bar operations-chart__bar--revenue"
+                style={{ height: revenueHeight }}
+                title={formatCurrency(point.revenue)}
+              />
+            </div>
+            <span className="operations-chart__label">{point.label}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DistributionMeter({ segments }: { segments: DonutSegment[] }) {
+  const total = segments.reduce((sum, segment) => sum + segment.value, 0);
+
+  return (
+    <div className="operations-distribution">
+      <div
+        aria-hidden="true"
+        className="operations-distribution__donut"
+        style={{ background: createDonutBackground(segments) }}
+      >
+        <div className="operations-distribution__donut-core">
+          <strong>{total}</strong>
+          <span>orders</span>
+        </div>
+      </div>
+
+      <div className="operations-distribution__legend">
+        {segments.map((segment) => {
+          const share = total > 0 ? (segment.value / total) * 100 : 0;
+
+          return (
+            <div
+              key={segment.label}
+              className="operations-distribution__legend-row"
+            >
+              <span
+                className="operations-distribution__legend-swatch"
+                style={{ backgroundColor: segment.color }}
+              />
+              <span>{segment.label}</span>
+              <strong>{share.toFixed(0)}%</strong>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MemberOrderCard({ order }: { order: OrderRecord }) {
+  return (
+    <motion.article
+      className="member-orders__card"
+      initial={{ opacity: 0, y: 18 }}
+      transition={{ duration: 0.42 }}
+      viewport={{ amount: 0.2, once: true }}
+      whileInView={{ opacity: 1, y: 0 }}
+    >
+      <div className="member-orders__card-head">
+        <div>
+          <p className="orders-page__eyebrow">{order.orderNumber}</p>
+          <h2 className="member-orders__card-title">{order.shippingAddress}</h2>
+          <p className="member-orders__card-date">
+            {formatDateTime(order.createdAt)}
+          </p>
+        </div>
+        <div className="member-orders__price-block">
+          <span>Total</span>
+          <strong>{formatCurrency(order.totalAmount)}</strong>
+        </div>
+      </div>
+
+      <div className="member-orders__meta-grid">
+        <div>
+          <span>Status</span>
+          <strong
+            className={`member-orders__pill member-orders__pill--${order.status}`}
+          >
+            {formatStatusLabel(order.status)}
+          </strong>
+        </div>
+        <div>
+          <span>Payment</span>
+          <strong>{formatStatusLabel(order.payment?.status)}</strong>
+        </div>
+        <div>
+          <span>Shipping</span>
+          <strong>{formatStatusLabel(order.shipping?.status)}</strong>
+        </div>
+        <div>
+          <span>Method</span>
+          <strong>{formatStatusLabel(order.payment?.method)}</strong>
+        </div>
+      </div>
+    </motion.article>
+  );
+}
+
+export function OrdersPage({
+  fallbackOrders = [],
+}: {
+  fallbackOrders?: OrderRecord[];
+}) {
+  const location = useLocation();
+  const { authLoading, isAdmin, isAuthenticated, openAuthModal, role, user } =
+    useStorefront();
+  const [orders, setOrders] = useState<OrderRecord[]>(fallbackOrders);
+  const [products, setProducts] = useState<ProductRecord[]>([]);
+  const [drafts, setDrafts] = useState<Record<string, UpdateOrderPayload>>({});
+  const [productForm, setProductForm] = useState<ProductFormState>(
+    createEmptyProductForm(),
+  );
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(
+    null,
+  );
+  const [loading, setLoading] = useState(true);
+  const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
+  const [pendingProductId, setPendingProductId] = useState<string | null>(null);
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
+  const [imageUploadMessage, setImageUploadMessage] = useState<string | null>(null);
+  const [selectedImageNames, setSelectedImageNames] = useState<string[]>([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [productSearch, setProductSearch] = useState("");
+  const deferredProductSearch = useDeferredValue(productSearch);
+  const [error, setError] = useState<string | null>(null);
+  const [productMessage, setProductMessage] = useState<string | null>(null);
+
+  const checkoutNotice =
+    (location.state as OrdersLocationState | null)?.cartCheckoutMessage ?? null;
+
+  useEffect(() => {
+    let active = true;
+
+    if (!isAuthenticated) {
+      setOrders([]);
+      setProducts([]);
+      setLoading(false);
+      setError(null);
+      setProductMessage(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    setLoading(true);
+    setError(null);
+
+    fetchOperationsData(isAdmin)
+      .then((result) => {
+        if (!active) {
+          return;
+        }
+
+        setOrders(result.orders);
+        setProducts(sortProductsForAdmin(result.products));
+        setLoading(false);
+      })
+      .catch((err: unknown) => {
+        if (!active) {
+          return;
+        }
+
+        setLoading(false);
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Unable to load operations data right now.",
+        );
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isAdmin, isAuthenticated]);
+
+  const latestOrder = orders[0];
+  const pendingAttentionCount = useMemo(
+    () =>
+      orders.filter((order) =>
+        ["pending", "processing", "confirmed", "shipped"].includes(
+          order.status,
+        ),
+      ).length,
+    [orders],
+  );
+
+  const grossRevenue = useMemo(
+    () =>
+      orders.reduce((sum, order) => {
+        return order.status === "cancelled" ? sum : sum + order.totalAmount;
+      }, 0),
+    [orders],
+  );
+
+  const capturedRevenue = useMemo(
+    () =>
+      orders.reduce((sum, order) => {
+        return order.payment?.status === "paid" ? sum + order.totalAmount : sum;
+      }, 0),
+    [orders],
+  );
+
+  const averageOrderValue = useMemo(() => {
+    const validOrders = orders.filter((order) => order.status !== "cancelled");
+
+    if (validOrders.length === 0) {
+      return 0;
+    }
+
+    return grossRevenue / validOrders.length;
+  }, [grossRevenue, orders]);
+
+  const lowStockProducts = useMemo(() => {
+    return products
+      .filter((product) => productStock(product) <= 6)
+      .sort((left, right) => productStock(left) - productStock(right));
+  }, [products]);
+
+  const salesSeries = useMemo(() => buildSalesSeries(orders), [orders]);
+  const statusSegments = useMemo(() => buildStatusSegments(orders), [orders]);
+  const variantLookup = useMemo(() => buildVariantLookup(products), [products]);
+
+  const filteredProducts = useMemo(() => {
+    const query = deferredProductSearch.trim().toLowerCase();
+
+    if (!query) {
+      return products;
+    }
+
+    return products.filter((product) => {
+      const variantSearch = product.variants
+        .map((variant) => `${variant.sku} ${variant.color} ${variant.size}`)
+        .join(" ")
+        .toLowerCase();
+      const haystack = [
+        product.name,
+        product.brandId,
+        product.categoryId,
+        product.type,
+        product.description,
+        variantSearch,
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(query);
+    });
+  }, [deferredProductSearch, products]);
+
+  const thisMonthKey = useMemo(() => monthKey(new Date()), []);
+  const previousMonthKey = useMemo(() => {
+    const now = new Date();
+    return monthKey(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+  }, []);
+
+  const currentMonthPoint = salesSeries.find(
+    (point) => point.key === thisMonthKey,
+  );
+  const previousMonthPoint = salesSeries.find(
+    (point) => point.key === previousMonthKey,
+  );
+  const currentMonthPaid = useMemo(
+    () =>
+      orders.reduce((sum, order) => {
+        if (monthKey(new Date(order.createdAt)) !== thisMonthKey) {
+          return sum;
+        }
+
+        return order.payment?.status === "paid" ? sum + order.totalAmount : sum;
+      }, 0),
+    [orders, thisMonthKey],
+  );
+  const previousMonthPaid = useMemo(
+    () =>
+      orders.reduce((sum, order) => {
+        if (monthKey(new Date(order.createdAt)) !== previousMonthKey) {
+          return sum;
+        }
+
+        return order.payment?.status === "paid" ? sum + order.totalAmount : sum;
+      }, 0),
+    [orders, previousMonthKey],
+  );
+
+  const metricCards: AdminMetric[] = useMemo(() => {
+    const currentMonthOrders = currentMonthPoint?.count ?? 0;
+    const previousMonthOrders = previousMonthPoint?.count ?? 0;
+    const currentMonthRevenue = currentMonthPoint?.revenue ?? 0;
+    const previousMonthRevenue = previousMonthPoint?.revenue ?? 0;
+    const currentAverage =
+      currentMonthOrders > 0 ? currentMonthRevenue / currentMonthOrders : 0;
+    const previousAverage =
+      previousMonthOrders > 0 ? previousMonthRevenue / previousMonthOrders : 0;
+
+    return [
+      {
+        detail: `${pendingAttentionCount} reservations still need a decision.`,
+        icon: ShoppingBag,
+        label: "Orders managed",
+        tone: resolveMetricTone(
+          percentChange(currentMonthOrders, previousMonthOrders),
+        ),
+        trendLabel: formatTrendLabel(
+          percentChange(currentMonthOrders, previousMonthOrders),
+        ),
+        value: String(orders.length),
+      },
+      {
+        detail: `Gross sales across the live order ledger.`,
+        icon: ShieldCheck,
+        label: "Gross revenue",
+        tone: resolveMetricTone(
+          percentChange(currentMonthRevenue, previousMonthRevenue),
+        ),
+        trendLabel: formatTrendLabel(
+          percentChange(currentMonthRevenue, previousMonthRevenue),
+        ),
+        value: formatCurrency(grossRevenue),
+      },
+      {
+        detail: `Captured cash flow - Order marker paid.`,
+        icon: Truck,
+        label: "Captured revenue",
+        tone: resolveMetricTone(
+          percentChange(currentMonthPaid, previousMonthPaid),
+        ),
+        trendLabel: formatTrendLabel(
+          percentChange(currentMonthPaid, previousMonthPaid),
+        ),
+        value: formatCurrency(capturedRevenue),
+      },
+      {
+        detail: `${lowStockProducts.length} catalog items are under the low-stock threshold.`,
+        icon: Boxes,
+        label: "Average ticket",
+        tone: resolveMetricTone(percentChange(currentAverage, previousAverage)),
+        trendLabel: formatTrendLabel(
+          percentChange(currentAverage, previousAverage),
+        ),
+        value: formatCurrency(averageOrderValue),
+      },
+    ];
+  }, [
+    averageOrderValue,
+    capturedRevenue,
+    currentMonthPaid,
+    currentMonthPoint,
+    grossRevenue,
+    lowStockProducts.length,
+    orders.length,
+    pendingAttentionCount,
+    previousMonthPaid,
+    previousMonthPoint,
+  ]);
+
+  function getDraft(order: OrderRecord): UpdateOrderPayload {
+    return (
+      drafts[order.id] ?? {
+        courierName:
+          order.shipping?.courierName &&
+          order.shipping.courierName !== "Pending assignment"
+            ? order.shipping.courierName
+            : "",
+        paymentStatus: order.payment?.status,
+        shippingStatus: order.shipping?.status,
+        status: order.status,
+        trackingNumber:
+          order.shipping?.trackingNumber &&
+          order.shipping.trackingNumber !== "Pending"
+            ? order.shipping.trackingNumber
+            : "",
+      }
+    );
+  }
+
+  async function handleRefresh(): Promise<void> {
+    setRefreshing(true);
+    setError(null);
+
+    try {
+      const result = await fetchOperationsData(isAdmin);
+      setOrders(result.orders);
+      setProducts(sortProductsForAdmin(result.products));
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to refresh operations data.",
+      );
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  async function handleAdminUpdate(
+    orderId: string,
+    draft: UpdateOrderPayload,
+  ): Promise<void> {
+    setPendingOrderId(orderId);
+    setError(null);
+
+    try {
+      const updatedOrder = await storefrontApi.updateOrder(orderId, draft);
+
+      if (!updatedOrder) {
+        throw new Error("Order not found.");
+      }
+
+      setOrders((current) =>
+        current.map((order) =>
+          order.id === updatedOrder.id ? updatedOrder : order,
+        ),
+      );
+      setDrafts((current) => {
+        const next = { ...current };
+        delete next[orderId];
+        return next;
+      });
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to update this order right now.",
+      );
+    } finally {
+      setPendingOrderId(null);
+    }
+  }
+
+  function selectProduct(product: ProductRecord): void {
+    startTransition(() => {
+      setSelectedProductId(product.id);
+      setProductForm(createProductForm(product));
+      setImageUploadError(null);
+      setImageUploadMessage(null);
+      setProductMessage(null);
+      setSelectedImageNames([]);
+    });
+  }
+
+  function resetProductEditor(): void {
+    startTransition(() => {
+      setSelectedProductId(null);
+      setProductForm(createEmptyProductForm());
+      setImageUploadError(null);
+      setImageUploadMessage(null);
+      setProductMessage(null);
+      setSelectedImageNames([]);
+    });
+  }
+
+  function handleProductFieldChange(
+    key: keyof Omit<ProductFormState, "images" | "variants">,
+    value: string,
+  ): void {
+    setProductForm((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  }
+
+  function removeProductImage(imageIndex: number): void {
+    setProductForm((current) => ({
+      ...current,
+      images: current.images.filter((_, index) => index !== imageIndex),
+    }));
+  }
+
+  async function handleProductImageSelection(
+    event: ChangeEvent<HTMLInputElement>,
+  ): Promise<void> {
+    const input = event.target;
+    const files = Array.from(input.files ?? []);
+
+    if (files.length === 0) {
+      return;
+    }
+
+    setImageUploadError(null);
+    setImageUploadMessage(null);
+    setSelectedImageNames(files.map((file) => file.name));
+
+    const unsupportedFile = files.find(
+      (file) => !PRODUCT_IMAGE_TYPES.has(file.type),
+    );
+
+    if (unsupportedFile) {
+      setImageUploadError(
+        `${unsupportedFile.name} is not supported. Choose PNG or JPG files only.`,
+      );
+      return;
+    }
+
+    const oversizedFile = files.find(
+      (file) => file.size > PRODUCT_IMAGE_MAX_BYTES,
+    );
+
+    if (oversizedFile) {
+      setImageUploadError(
+        `${oversizedFile.name} is ${formatFileSize(oversizedFile.size)}. Keep each image at 4 MB or smaller.`,
+      );
+      return;
+    }
+
+    setError(null);
+    setProductMessage(null);
+    setUploadingImages(true);
+
+    try {
+      const embeddedImages = await Promise.all(
+        files.map(async (file) => {
+          return fileToEmbeddedProductImage(file);
+        }),
+      );
+
+      const nextImages = [...productForm.images, ...embeddedImages];
+      const totalImagePayload = nextImages.reduce(
+        (total, image) => total + image.length,
+        0,
+      );
+
+      if (totalImagePayload > EMBEDDED_IMAGE_TOTAL_MAX_CHARS) {
+        throw new Error(
+          "These images are too heavy for Firestore. Keep fewer images or use smaller originals.",
+        );
+      }
+
+      setProductForm((current) => ({
+        ...current,
+        images: [...current.images, ...embeddedImages],
+      }));
+      setImageUploadMessage(
+        `${embeddedImages.length} image${embeddedImages.length === 1 ? "" : "s"} prepared in the product gallery.`,
+      );
+      setSelectedImageNames([]);
+    } catch (err) {
+      setImageUploadError(
+        err instanceof Error
+          ? err.message
+          : "Unable to prepare the selected images.",
+      );
+    } finally {
+      input.value = "";
+      setUploadingImages(false);
+    }
+  }
+
+  function handleVariantChange(
+    index: number,
+    key: keyof ProductVariantDraft,
+    value: string,
+  ): void {
+    setProductForm((current) => ({
+      ...current,
+      variants: current.variants.map((variant, variantIndex) => {
+        if (variantIndex !== index) {
+          return variant;
+        }
+
+        return {
+          ...variant,
+          [key]: value,
+        };
+      }),
+    }));
+  }
+
+  function addVariantRow(): void {
+    setProductForm((current) => ({
+      ...current,
+      variants: [...current.variants, createEmptyVariantDraft()],
+    }));
+  }
+
+  function removeVariantRow(index: number): void {
+    setProductForm((current) => {
+      if (current.variants.length === 1) {
+        return current;
+      }
+
+      return {
+        ...current,
+        variants: current.variants.filter(
+          (_, variantIndex) => variantIndex !== index,
+        ),
+      };
+    });
+  }
+
+  async function handleProductSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ): Promise<void> {
+    event.preventDefault();
+    setProductMessage(null);
+    setError(null);
+
+    let payload: CreateProductPayload;
+
+    try {
+      payload = buildProductPayload(productForm);
+    } catch (err) {
+      setProductMessage(
+        err instanceof Error ? err.message : "Product form is incomplete.",
+      );
+      return;
+    }
+
+    const targetId = selectedProductId ?? "new";
+    setPendingProductId(targetId);
+
+    try {
+      if (selectedProductId) {
+        const updatedProduct = await storefrontApi.updateProduct(
+          selectedProductId,
+          payload,
+        );
+
+        setProducts((current) =>
+          sortProductsForAdmin(
+            current.map((product) =>
+              product.id === updatedProduct.id ? updatedProduct : product,
+            ),
+          ),
+        );
+        startTransition(() => {
+          setProductForm(createProductForm(updatedProduct));
+        });
+        setProductMessage(
+          `Updated ${updatedProduct.name} in the Firestore catalog.`,
+        );
+      } else {
+        const createdProduct = await storefrontApi.createProduct(payload);
+
+        setProducts((current) =>
+          sortProductsForAdmin([createdProduct, ...current]),
+        );
+        startTransition(() => {
+          setSelectedProductId(createdProduct.id);
+          setProductForm(createProductForm(createdProduct));
+        });
+        setProductMessage(
+          `Added ${createdProduct.name} to the live Firestore catalog.`,
+        );
+      }
+    } catch (err) {
+      setProductMessage(
+        err instanceof Error ? err.message : "Unable to save this product.",
+      );
+    } finally {
+      setPendingProductId(null);
+    }
+  }
+
+  async function handleDeleteProduct(product: ProductRecord): Promise<void> {
+    if (
+      !window.confirm(
+        `Remove ${product.name} from the live storefront catalog?`,
+      )
+    ) {
+      return;
+    }
+
+    setPendingProductId(product.id);
+    setProductMessage(null);
+    setError(null);
+
+    try {
+      await storefrontApi.deleteProduct(product.id);
+      setProducts((current) =>
+        current.filter((entry) => entry.id !== product.id),
+      );
+
+      if (selectedProductId === product.id) {
+        resetProductEditor();
+      }
+
+      setProductMessage(`${product.name} was soft-deleted from Firestore.`);
+    } catch (err) {
+      setProductMessage(
+        err instanceof Error ? err.message : "Unable to delete this product.",
+      );
+    } finally {
+      setPendingProductId(null);
+    }
+  }
+
+  function handleExportCsv(): void {
+    if (orders.length === 0) {
+      setProductMessage("No sales data is available yet for CSV export.");
+      return;
+    }
+
+    const fileStamp = new Date().toISOString().slice(0, 10);
+    const csv = buildSalesCsv(orders, variantLookup);
+    downloadCsv(`watch-shop-sales-${fileStamp}.csv`, csv);
+    setProductMessage("Sales report exported as CSV.");
+  }
+
+  function handlePrint(): void {
+    window.print();
+  }
+
+  const isProductActionPending =
+    uploadingImages ||
+    (pendingProductId !== null &&
+      (pendingProductId === selectedProductId || pendingProductId === "new"));
+
+  if (authLoading && !user) {
+    return (
+      <div className="orders-page">
+        <div className="orders-page__ambient" />
+        <div className="orders-page__shell">
+          <div className="orders-page__empty-state">
+            Loading your order desk.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="orders-page">
+        <div className="orders-page__ambient" />
+        <div className="orders-page__shell">
+          <div className="orders-page__gate">
+            <p className="orders-page__eyebrow">Member desk</p>
+            <h1 className="orders-page__title">
+              Sign in to access orders, cart, and reserve actions.
+            </h1>
+            <p className="orders-page__copy">
+              Guest mode can browse the collection and inspect product pages.
+              Orders, checkout follow-up, and the admin operations room live
+              behind member access.
+            </p>
+            <div className="orders-page__gate-actions">
+              <button
+                className="orders-page__button orders-page__button--primary"
+                onClick={() => openAuthModal("sign-in")}
+                type="button"
+              >
+                Sign in
+              </button>
+              <Link className="orders-page__button" to="/collection">
+                Browse collection
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="orders-page">
+        <div className="orders-page__ambient" />
+        <div className="orders-page__shell">
+          <section className="member-orders__hero">
+            <div>
+              <p className="orders-page__eyebrow">Reserve desk</p>
+              <h1 className="orders-page__title">
+                Your order timeline, organized like a private ledger.
+              </h1>
+              <p className="orders-page__copy">
+                Follow reservation progress, payment state, and delivery
+                movement without leaving the storefront.
+              </p>
+            </div>
+
+            <div className="member-orders__hero-rail">
+              <div className="member-orders__hero-stat">
+                <span>Orders tracked</span>
+                <strong>{loading ? "..." : orders.length}</strong>
+              </div>
+              <div className="member-orders__hero-stat">
+                <span>Latest ticket</span>
+                <strong>
+                  {latestOrder?.orderNumber ?? "Waiting for first reserve"}
+                </strong>
+              </div>
+              <div className="member-orders__hero-stat">
+                <span>Total reserved</span>
+                <strong>{formatCurrency(grossRevenue)}</strong>
+              </div>
+            </div>
+          </section>
+
+          {checkoutNotice ? (
+            <p className="orders-page__notice">{checkoutNotice}</p>
+          ) : null}
+          {error ? <p className="orders-page__error">{error}</p> : null}
+
+          <div className="member-orders__list">
+            {loading ? (
+              <div className="orders-page__empty-state">
+                Loading your recent reservations.
+              </div>
+            ) : null}
+
+            {!loading && orders.length === 0 ? (
+              <div className="orders-page__empty-state">
+                No orders yet. Reserve a watch from the product page to populate
+                your live order desk.
+              </div>
+            ) : null}
+
+            {orders.map((order) => (
+              <MemberOrderCard key={order.id} order={order} />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="orders-page orders-page--admin">
+      <div className="orders-page__ambient" />
+      <div className="orders-page__shell orders-page__shell--operations">
+        <aside className="operations-sidebar">
+          <div className="operations-sidebar__brand">
+            <p className="operations-sidebar__brand-kicker">Watch Shop</p>
+            <h2>Operations</h2>
+            <p>
+              Control room for reservations, revenue, and live catalog edits.
+            </p>
+          </div>
+
+          <nav
+            aria-label="Operations sections"
+            className="operations-sidebar__nav"
+          >
+            {ADMIN_SECTIONS.map((section) => {
+              const Icon = section.icon;
+
+              return (
+                <a
+                  key={section.href}
+                  className="operations-sidebar__nav-link"
+                  href={section.href}
+                >
+                  <Icon className="operations-sidebar__nav-icon" />
+                  <div>
+                    <strong>{section.label}</strong>
+                    <span>{section.description}</span>
+                  </div>
+                </a>
+              );
+            })}
+          </nav>
+
+          <div className="operations-sidebar__snapshot">
+            <p className="orders-page__eyebrow">Live snapshot</p>
+            <strong>
+              {loading
+                ? "Syncing"
+                : `${orders.length} orders / ${products.length} products`}
+            </strong>
+            <span>
+              {pendingAttentionCount} orders need follow-up and{" "}
+              {lowStockProducts.length} products are running low.
+            </span>
+          </div>
+
+          <div className="operations-sidebar__queue">
+            <p className="orders-page__eyebrow">Attention queue</p>
+            {lowStockProducts.slice(0, 3).map((product) => (
+              <button
+                key={product.id}
+                className="operations-sidebar__queue-item"
+                onClick={() => selectProduct(product)}
+                type="button"
+              >
+                <div>
+                  <strong>{product.name}</strong>
+                  <span>{humanizeToken(product.categoryId)}</span>
+                </div>
+                <b>{productStock(product)} left</b>
+              </button>
+            ))}
+            {lowStockProducts.length === 0 ? (
+              <div className="operations-sidebar__queue-empty">
+                Catalog inventory is healthy.
+              </div>
+            ) : null}
+          </div>
+        </aside>
+
+        <div className="operations-main">
+          <section className="operations-hero" id="operations-overview">
+            <div className="operations-hero__copy">
+              <p className="orders-page__eyebrow">Admin operations</p>
+              <h1 className="orders-page__title">DASHBOARD</h1>
+              <p className="orders-page__copy">
+                Fundementals on managing your business.
+              </p>
+            </div>
+
+            <div className="operations-hero__actions" id="operations-export">
+              <button
+                className="orders-page__button"
+                disabled={refreshing}
+                onClick={() => {
+                  void handleRefresh();
+                }}
+                type="button"
+              >
+                <RefreshCw size={16} />
+                {refreshing ? "Refreshing" : "Refresh"}
+              </button>
+              <button
+                className="orders-page__button"
+                onClick={handlePrint}
+                type="button"
+              >
+                <Printer size={16} />
+                Print report
+              </button>
+              <button
+                className="orders-page__button orders-page__button--primary"
+                onClick={handleExportCsv}
+                type="button"
+              >
+                <Download size={16} />
+                Export CSV
+              </button>
+            </div>
+          </section>
+
+          {checkoutNotice ? (
+            <p className="orders-page__notice">{checkoutNotice}</p>
+          ) : null}
+          {error ? <p className="orders-page__error">{error}</p> : null}
+          {productMessage ? (
+            <p className="orders-page__notice orders-page__notice--muted">
+              {productMessage}
+            </p>
+          ) : null}
+
+          {loading ? (
+            <div className="orders-page__empty-state">
+              Loading the operations dashboard.
+            </div>
+          ) : (
+            <div className="operations-grid">
+              <section className="operations-panel operations-panel--metrics">
+                <div className="operations-panel__head">
+                  <div>
+                    <p className="orders-page__eyebrow">KPI snapshot</p>
+                    <h2>Daily control surface</h2>
+                  </div>
+                  <span className="operations-panel__meta">Role: {role}</span>
+                </div>
+
+                <div className="operations-metrics-grid">
+                  {metricCards.map((metric) => (
+                    <AdminMetricCard key={metric.label} {...metric} />
+                  ))}
+                </div>
+              </section>
+
+              <section className="operations-panel operations-panel--sales">
+                <div className="operations-panel__head">
+                  <div>
+                    <p className="orders-page__eyebrow">Revenue momentum</p>
+                    <h2>Six-month sales dynamics</h2>
+                  </div>
+                  <span className="operations-panel__meta">
+                    {currentMonthPoint
+                      ? formatCurrency(currentMonthPoint.revenue)
+                      : formatCurrency(0)}{" "}
+                    this month
+                  </span>
+                </div>
+
+                <SalesBars points={salesSeries} />
+              </section>
+
+              <section className="operations-panel operations-panel--distribution">
+                <div className="operations-panel__head">
+                  <div>
+                    <p className="orders-page__eyebrow">Order mix</p>
+                    <h2>Status distribution</h2>
+                  </div>
+                  <span className="operations-panel__meta">
+                    {pendingAttentionCount} in motion
+                  </span>
+                </div>
+
+                <DistributionMeter segments={statusSegments} />
+
+                <div className="operations-stock-list">
+                  <div className="operations-stock-list__head">
+                    <strong>Low stock queue</strong>
+                    <span>{lowStockProducts.length} items</span>
+                  </div>
+                  {lowStockProducts.slice(0, 4).map((product) => (
+                    <button
+                      key={product.id}
+                      className="operations-stock-list__item"
+                      onClick={() => selectProduct(product)}
+                      type="button"
+                    >
+                      <div>
+                        <strong>{product.name}</strong>
+                        <span>{humanizeToken(product.brandId)}</span>
+                      </div>
+                      <b>{productStock(product)}</b>
+                    </button>
+                  ))}
+                  {lowStockProducts.length === 0 ? (
+                    <div className="operations-stock-list__empty">
+                      No low-stock product requires attention.
+                    </div>
+                  ) : null}
+                </div>
+              </section>
+
+              <section
+                className="operations-panel operations-panel--orders"
+                id="operations-orders"
+              >
+                <div className="operations-panel__head">
+                  <div>
+                    <p className="orders-page__eyebrow">Sales ledger</p>
+                    <h2>Order control and fulfillment updates</h2>
+                  </div>
+                  <span className="operations-panel__meta">
+                    {orders.length} reservations synced
+                  </span>
+                </div>
+
+                {orders.length === 0 ? (
+                  <div className="orders-page__empty-state">
+                    No orders yet. Checkout activity will populate the control
+                    ledger here.
+                  </div>
+                ) : (
+                  <div className="operations-orders-list">
+                    {orders.map((order) => {
+                      const draft = getDraft(order);
+                      const itemSummary = buildOrderItemSummary(
+                        order,
+                        variantLookup,
+                      );
+
+                      return (
+                        <motion.article
+                          key={order.id}
+                          className="operations-order-card"
+                          initial={{ opacity: 0, y: 20 }}
+                          transition={{ duration: 0.4 }}
+                          viewport={{ amount: 0.16, once: true }}
+                          whileInView={{ opacity: 1, y: 0 }}
+                        >
+                          <div className="operations-order-card__summary">
+                            <div>
+                              <p className="orders-page__eyebrow">
+                                {order.orderNumber}
+                              </p>
+                              <h3>{order.shippingAddress}</h3>
+                              <p>{formatDateTime(order.createdAt)}</p>
+                            </div>
+                            <div className="operations-order-card__summary-rail">
+                              <span
+                                className={`operations-pill operations-pill--${order.status}`}
+                              >
+                                {formatStatusLabel(order.status)}
+                              </span>
+                              <strong>
+                                {formatCurrency(order.totalAmount)}
+                              </strong>
+                            </div>
+                          </div>
+
+                          <div className="operations-order-card__meta">
+                            <div>
+                              <span>Items</span>
+                              <strong>{itemSummary}</strong>
+                            </div>
+                            <div>
+                              <span>Payment</span>
+                              <strong>
+                                {formatStatusLabel(order.payment?.status)}
+                              </strong>
+                            </div>
+                            <div>
+                              <span>Shipping</span>
+                              <strong>
+                                {formatStatusLabel(order.shipping?.status)}
+                              </strong>
+                            </div>
+                            <div>
+                              <span>Method</span>
+                              <strong>
+                                {formatStatusLabel(order.payment?.method)}
+                              </strong>
+                            </div>
+                          </div>
+
+                          <div className="operations-order-card__controls">
+                            <label className="operations-field">
+                              <span>Status</span>
+                              <select
+                                onChange={(event) =>
+                                  setDrafts((current) => ({
+                                    ...current,
+                                    [order.id]: {
+                                      ...getDraft(order),
+                                      status: event.target.value as OrderStatus,
+                                    },
+                                  }))
+                                }
+                                value={draft.status ?? order.status}
+                              >
+                                {ORDER_STATUS_OPTIONS.map((value) => (
+                                  <option key={value} value={value}>
+                                    {formatStatusLabel(value)}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+
+                            <label className="operations-field">
+                              <span>Payment</span>
+                              <select
+                                onChange={(event) =>
+                                  setDrafts((current) => ({
+                                    ...current,
+                                    [order.id]: {
+                                      ...getDraft(order),
+                                      paymentStatus: event.target
+                                        .value as PaymentStatus,
+                                    },
+                                  }))
+                                }
+                                value={
+                                  draft.paymentStatus ??
+                                  order.payment?.status ??
+                                  "pending"
+                                }
+                              >
+                                {PAYMENT_STATUS_OPTIONS.map((value) => (
+                                  <option key={value} value={value}>
+                                    {formatStatusLabel(value)}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+
+                            <label className="operations-field">
+                              <span>Shipping</span>
+                              <select
+                                onChange={(event) =>
+                                  setDrafts((current) => ({
+                                    ...current,
+                                    [order.id]: {
+                                      ...getDraft(order),
+                                      shippingStatus: event.target
+                                        .value as ShippingStatus,
+                                    },
+                                  }))
+                                }
+                                value={
+                                  draft.shippingStatus ??
+                                  order.shipping?.status ??
+                                  "pending"
+                                }
+                              >
+                                {SHIPPING_STATUS_OPTIONS.map((value) => (
+                                  <option key={value} value={value}>
+                                    {formatStatusLabel(value)}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+
+                            <label className="operations-field">
+                              <span>Courier</span>
+                              <input
+                                onChange={(event) =>
+                                  setDrafts((current) => ({
+                                    ...current,
+                                    [order.id]: {
+                                      ...getDraft(order),
+                                      courierName: event.target.value,
+                                    },
+                                  }))
+                                }
+                                placeholder="Courier name"
+                                value={draft.courierName ?? ""}
+                              />
+                            </label>
+
+                            <label className="operations-field">
+                              <span>Tracking</span>
+                              <input
+                                onChange={(event) =>
+                                  setDrafts((current) => ({
+                                    ...current,
+                                    [order.id]: {
+                                      ...getDraft(order),
+                                      trackingNumber: event.target.value,
+                                    },
+                                  }))
+                                }
+                                placeholder="Tracking number"
+                                value={draft.trackingNumber ?? ""}
+                              />
+                            </label>
+
+                            <button
+                              className="orders-page__button orders-page__button--primary operations-order-card__save"
+                              disabled={pendingOrderId === order.id}
+                              onClick={() => {
+                                void handleAdminUpdate(order.id, draft);
+                              }}
+                              type="button"
+                            >
+                              {pendingOrderId === order.id ? "Saving" : "Save"}
+                            </button>
+                          </div>
+                        </motion.article>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+
+              <section
+                className="operations-panel operations-panel--catalog"
+                id="operations-products"
+              >
+                <div className="operations-panel__head">
+                  <div>
+                    <p className="orders-page__eyebrow">Catalog manager</p>
+                    <h2>Add, edit, or remove products</h2>
+                  </div>
+                  <span className="operations-panel__meta">
+                    Firestore sync through admin product endpoints
+                  </span>
+                </div>
+
+                <div className="operations-catalog">
+                  <div className="operations-catalog__list">
+                    <div className="operations-catalog__list-head">
+                      <div>
+                        <p className="orders-page__eyebrow">Catalog shelf</p>
+                        <h3>Pick a product, then edit full-width below</h3>
+                      </div>
+                      <span className="operations-panel__meta">
+                        {filteredProducts.length} visible item
+                        {filteredProducts.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+
+                    <label className="operations-search">
+                      <Search size={16} />
+                      <input
+                        onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                          setProductSearch(event.target.value);
+                        }}
+                        placeholder="Search by product, SKU, category, or brand"
+                        value={productSearch}
+                      />
+                    </label>
+
+                    <div className="operations-catalog__results">
+                      {filteredProducts.map((product) => {
+                        const isSelected = product.id === selectedProductId;
+                        const leadImage = product.images[0] ?? null;
+
+                        return (
+                          <button
+                            key={product.id}
+                            className={`operations-product-card ${
+                              isSelected
+                                ? "operations-product-card--selected"
+                                : ""
+                            }`}
+                            onClick={() => selectProduct(product)}
+                            type="button"
+                          >
+                            <div className="operations-product-card__media">
+                              {leadImage ? (
+                                <img alt={product.name} src={leadImage} />
+                              ) : (
+                                <div className="operations-product-card__media-fallback">
+                                  <Package size={18} />
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="operations-product-card__copy">
+                              <div className="operations-product-card__topline">
+                                <strong>{product.name}</strong>
+                                <span
+                                  className={`operations-pill operations-pill--${productStockTone(product)}`}
+                                >
+                                  {productStock(product)} in stock
+                                </span>
+                              </div>
+                              <p>
+                                {humanizeToken(product.brandId)} ·{" "}
+                                {humanizeToken(product.categoryId)}
+                              </p>
+                              <div className="operations-product-card__meta">
+                                <span>
+                                  {formatCurrency(
+                                    productStartingPrice(product),
+                                  )}
+                                </span>
+                                <span>{product.variants.length} variants</span>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+
+                      {filteredProducts.length === 0 ? (
+                        <div className="operations-catalog__empty">
+                          No catalog item matches the current search.
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <form
+                    className="operations-editor"
+                    onSubmit={(event) => void handleProductSubmit(event)}
+                  >
+                    <div className="operations-editor__head">
+                      <div>
+                        <p className="orders-page__eyebrow">
+                          {selectedProductId
+                            ? "Editing product"
+                            : "Create product"}
+                        </p>
+                        <h3>
+                          {selectedProductId
+                            ? "Update catalog entry"
+                            : "Add a new product"}
+                        </h3>
+                      </div>
+                      <div className="operations-editor__head-actions">
+                        <button
+                          className="orders-page__button"
+                          onClick={resetProductEditor}
+                          type="button"
+                        >
+                          <CirclePlus size={16} />
+                          New draft
+                        </button>
+                        {selectedProductId ? (
+                          <button
+                            className="orders-page__button operations-editor__delete"
+                            disabled={pendingProductId === selectedProductId}
+                            onClick={() => {
+                              const product = products.find(
+                                (entry) => entry.id === selectedProductId,
+                              );
+
+                              if (product) {
+                                void handleDeleteProduct(product);
+                              }
+                            }}
+                            type="button"
+                          >
+                            <Trash2 size={16} />
+                            Delete
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="operations-editor__grid">
+                      <label
+                        className={`operations-field ${
+                          requiredFieldMessage(productForm.name, "Name")
+                            ? "operations-field--invalid"
+                            : ""
+                        }`}
+                      >
+                        <FieldLabel label="Name" required />
+                        <input
+                          aria-invalid={Boolean(
+                            requiredFieldMessage(productForm.name, "Name"),
+                          )}
+                          onChange={(event) =>
+                            handleProductFieldChange("name", event.target.value)
+                          }
+                          placeholder="Product name"
+                          value={productForm.name}
+                        />
+                        <FieldHint
+                          message={requiredFieldMessage(
+                            productForm.name,
+                            "Name",
+                          )}
+                        />
+                      </label>
+
+                      <label
+                        className={`operations-field ${
+                          requiredFieldMessage(productForm.type, "Type")
+                            ? "operations-field--invalid"
+                            : ""
+                        }`}
+                      >
+                        <FieldLabel label="Type" required />
+                        <input
+                          aria-invalid={Boolean(
+                            requiredFieldMessage(productForm.type, "Type"),
+                          )}
+                          onChange={(event) =>
+                            handleProductFieldChange("type", event.target.value)
+                          }
+                          placeholder="Dress watch, diver, chronograph..."
+                          value={productForm.type}
+                        />
+                        <FieldHint
+                          message={requiredFieldMessage(
+                            productForm.type,
+                            "Type",
+                          )}
+                        />
+                      </label>
+
+                      <label
+                        className={`operations-field ${
+                          requiredFieldMessage(productForm.brandId, "Brand ID")
+                            ? "operations-field--invalid"
+                            : ""
+                        }`}
+                      >
+                        <FieldLabel label="Brand ID" required />
+                        <input
+                          aria-invalid={Boolean(
+                            requiredFieldMessage(
+                              productForm.brandId,
+                              "Brand ID",
+                            ),
+                          )}
+                          onChange={(event) =>
+                            handleProductFieldChange(
+                              "brandId",
+                              event.target.value,
+                            )
+                          }
+                          placeholder="omega"
+                          value={productForm.brandId}
+                        />
+                        <FieldHint
+                          message={requiredFieldMessage(
+                            productForm.brandId,
+                            "Brand ID",
+                          )}
+                        />
+                      </label>
+
+                      <label
+                        className={`operations-field ${
+                          requiredFieldMessage(
+                            productForm.categoryId,
+                            "Category ID",
+                          )
+                            ? "operations-field--invalid"
+                            : ""
+                        }`}
+                      >
+                        <FieldLabel label="Category ID" required />
+                        <input
+                          aria-invalid={Boolean(
+                            requiredFieldMessage(
+                              productForm.categoryId,
+                              "Category ID",
+                            ),
+                          )}
+                          onChange={(event) =>
+                            handleProductFieldChange(
+                              "categoryId",
+                              event.target.value,
+                            )
+                          }
+                          placeholder="luxury-sport"
+                          value={productForm.categoryId}
+                        />
+                        <FieldHint
+                          message={requiredFieldMessage(
+                            productForm.categoryId,
+                            "Category ID",
+                          )}
+                        />
+                      </label>
+
+                      <label
+                        className={`operations-field operations-field--full ${
+                          descriptionFieldMessage(productForm.description)
+                            ? "operations-field--invalid"
+                            : ""
+                        }`}
+                      >
+                        <FieldLabel label="Description" required />
+                        <textarea
+                          aria-invalid={Boolean(
+                            descriptionFieldMessage(productForm.description),
+                          )}
+                          onChange={(event) =>
+                            handleProductFieldChange(
+                              "description",
+                              event.target.value,
+                            )
+                          }
+                          placeholder="Rich editorial copy for the product card and PDP."
+                          rows={4}
+                          value={productForm.description}
+                        />
+                        <FieldHint
+                          message={descriptionFieldMessage(
+                            productForm.description,
+                          )}
+                        />
+                      </label>
+
+                      <div
+                        className={`operations-field operations-field--full ${
+                          imageFieldMessage(productForm.images)
+                            ? "operations-field--invalid"
+                            : ""
+                        }`}
+                      >
+                        <FieldLabel label="Product Images" required />
+                        <div className="operations-image-picker">
+                          <div className="operations-image-picker__panel">
+                            <div className="operations-image-picker__copy">
+                              <strong>
+                                {uploadingImages
+                                  ? "Preparing selected images..."
+                                  : productForm.images.length > 0
+                                    ? `${productForm.images.length} image${
+                                        productForm.images.length === 1 ? "" : "s"
+                                      } in the gallery`
+                                    : "Choose images from your computer"}
+                              </strong>
+                              <p>
+                                {uploadingImages
+                                  ? `Processing ${selectedImageNames.length} file${
+                                      selectedImageNames.length === 1 ? "" : "s"
+                                    } for the Firestore-safe gallery.`
+                                  : productForm.images.length > 0
+                                    ? "These images are already attached to the product. You can add more files or remove any thumbnail below."
+                                    : "PNG or JPG only. Each file should stay under 4 MB and will be compressed into a Firestore-safe gallery."}
+                              </p>
+                            </div>
+                            <label
+                              aria-busy={uploadingImages}
+                              className={`operations-image-picker__trigger ${
+                                uploadingImages
+                                  ? "operations-image-picker__trigger--busy"
+                                  : ""
+                              }`}
+                            >
+                              <input
+                                accept={PRODUCT_IMAGE_ACCEPT}
+                                aria-invalid={Boolean(
+                                  imageFieldMessage(productForm.images),
+                                )}
+                                className="operations-image-picker__input"
+                                disabled={uploadingImages}
+                                multiple
+                                onChange={(event) =>
+                                  void handleProductImageSelection(event)
+                                }
+                                type="file"
+                              />
+                              <span className="operations-image-picker__button">
+                                {uploadingImages
+                                  ? "Preparing..."
+                                  : productForm.images.length > 0
+                                    ? "Add more files"
+                                    : "Choose files"}
+                              </span>
+                              <span className="operations-image-picker__status">
+                                {selectedImageNames.length > 0
+                                  ? `${selectedImageNames.length} selected: ${selectedImageNames.slice(0, 2).join(", ")}${
+                                      selectedImageNames.length > 2
+                                        ? ` +${selectedImageNames.length - 2} more`
+                                        : ""
+                                    }`
+                                  : productForm.images.length > 0
+                                    ? `${productForm.images.length} image${
+                                        productForm.images.length === 1 ? "" : "s"
+                                      } currently in the gallery.`
+                                    : "PNG or JPG, up to 4 MB each."}
+                              </span>
+                            </label>
+                            {imageUploadError ? (
+                              <p className="operations-image-picker__feedback operations-image-picker__feedback--error">
+                                {imageUploadError}
+                              </p>
+                            ) : imageUploadMessage ? (
+                              <p className="operations-image-picker__feedback operations-image-picker__feedback--success">
+                                {imageUploadMessage}
+                              </p>
+                            ) : null}
+                          </div>
+
+                          {productForm.images.length > 0 ? (
+                            <div className="operations-image-picker__grid">
+                              {productForm.images.map((image, index) => (
+                                <figure
+                                  key={`${image}-${index}`}
+                                  className="operations-image-picker__card"
+                                >
+                                  <img
+                                    alt={`${productForm.name || "Product"} image ${index + 1}`}
+                                    src={image}
+                                  />
+                                  <figcaption className="operations-image-picker__meta">
+                                    <span>Image {String(index + 1).padStart(2, "0")}</span>
+                                    <button
+                                      className="operations-image-picker__remove"
+                                      disabled={uploadingImages}
+                                      onClick={() => removeProductImage(index)}
+                                      type="button"
+                                    >
+                                      <Trash2 size={14} />
+                                      Remove
+                                    </button>
+                                  </figcaption>
+                                </figure>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="operations-image-picker__empty">
+                              Your gallery is empty. Add at least one hero image
+                              before publishing.
+                            </div>
+                          )}
+                        </div>
+                        <FieldHint
+                          fallback={
+                            productForm.images.length > 0
+                              ? `${productForm.images.length} image${productForm.images.length === 1 ? "" : "s"} ready for this product.`
+                              : "Pick PNG or JPG files directly from your device."
+                          }
+                          message={imageFieldMessage(productForm.images)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="operations-editor__variants">
+                      <div className="operations-editor__variants-head">
+                        <div>
+                          <p className="orders-page__eyebrow">Variants</p>
+                          <h4>Price, stock, and SKU matrix</h4>
+                        </div>
+                        <button
+                          className="orders-page__button"
+                          onClick={addVariantRow}
+                          type="button"
+                        >
+                          <CirclePlus size={16} />
+                          Add variant
+                        </button>
+                      </div>
+
+                      <div className="operations-editor__variants-summary">
+                        <strong>
+                          {productForm.variants.length} variant
+                          {productForm.variants.length === 1 ? "" : "s"}{" "}
+                          configured
+                        </strong>
+                        <p>
+                          Keep each SKU precise before publishing. Price,
+                          discount, and stock are saved as live variant records
+                          for this product.
+                        </p>
+                      </div>
+
+                      <div className="operations-variant-list">
+                        {productForm.variants.map((variant, index) => {
+                          const generatedSku = buildGeneratedSku(
+                            productForm,
+                            variant,
+                            index,
+                          );
+                          const colorMessage = requiredFieldMessage(
+                            variant.color,
+                            "Color",
+                          );
+                          const sizeMessage = requiredFieldMessage(
+                            variant.size,
+                            "Size",
+                          );
+                          const priceMessage = numericFieldMessage(
+                            variant.price,
+                            "Price",
+                          );
+                          const stockMessage = numericFieldMessage(
+                            variant.stockQuantity,
+                            "Stock",
+                            { integerOnly: true },
+                          );
+                          const discountMessage = numericFieldMessage(
+                            variant.discountPrice,
+                            "Discount",
+                            { allowEmpty: true },
+                          );
+                          const missingIdentity = [
+                            colorMessage ? "color" : null,
+                            sizeMessage ? "size" : null,
+                          ].filter(Boolean);
+                          const identityComplete = missingIdentity.length === 0;
+                          const pricingComplete =
+                            !priceMessage && !stockMessage;
+                          const stockValue = Number(variant.stockQuantity || 0);
+                          const statusTone =
+                            !identityComplete || !pricingComplete
+                              ? "draft"
+                              : stockValue <= 0
+                                ? "critical"
+                                : stockValue <= 3
+                                  ? "attention"
+                                  : "healthy";
+                          const statusLabel =
+                            statusTone === "draft"
+                              ? "Draft"
+                              : statusTone === "critical"
+                                ? "Sold out"
+                                : statusTone === "attention"
+                                  ? "Low stock"
+                                  : "Ready";
+                          const variantTitle =
+                            variant.sku.trim() || generatedSku;
+                          const variantSummary = identityComplete
+                            ? [variant.color.trim(), variant.size.trim()]
+                                .filter(Boolean)
+                                .join(" • ")
+                            : `Required: ${missingIdentity.join(" and ")}.`;
+
+                          return (
+                            <div
+                              key={variant.id ?? `draft-${index}`}
+                              className="operations-variant-row"
+                            >
+                              <div className="operations-variant-row__header">
+                                <div className="operations-variant-row__identity">
+                                  <span className="operations-variant-row__index">
+                                    Variant {String(index + 1).padStart(2, "0")}
+                                  </span>
+                                  <div className="operations-variant-row__title-wrap">
+                                    <strong>{variantTitle}</strong>
+                                    <p>{variantSummary}</p>
+                                  </div>
+                                </div>
+
+                                <div className="operations-variant-row__actions">
+                                  <span
+                                    className={`operations-variant-row__status operations-variant-row__status--${statusTone}`}
+                                  >
+                                    {statusLabel}
+                                  </span>
+                                  <button
+                                    aria-label={`Remove variant ${index + 1}`}
+                                    className="operations-variant-row__remove"
+                                    disabled={productForm.variants.length === 1}
+                                    onClick={() => removeVariantRow(index)}
+                                    type="button"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="operations-variant-row__groups">
+                                <div className="operations-variant-group">
+                                  <div className="operations-variant-group__head">
+                                    <span>Identity</span>
+                                    <strong>SKU, finish, and size</strong>
+                                  </div>
+
+                                  <div className="operations-variant-row__grid operations-variant-row__grid--identity">
+                                    <label className="operations-field">
+                                      <FieldLabel label="SKU" optional />
+                                      <input
+                                        onChange={(event) =>
+                                          handleVariantChange(
+                                            index,
+                                            "sku",
+                                            event.target.value,
+                                          )
+                                        }
+                                        placeholder={generatedSku}
+                                        value={variant.sku}
+                                      />
+                                      <FieldHint
+                                        fallback={
+                                          variant.sku.trim().length > 0
+                                            ? "Manual override active"
+                                            : "Auto-generated"
+                                        }
+                                        fallbackTone="accent"
+                                      />
+                                    </label>
+                                    <label
+                                      className={`operations-field ${
+                                        colorMessage
+                                          ? "operations-field--invalid"
+                                          : ""
+                                      }`}
+                                    >
+                                      <FieldLabel label="Color" required />
+                                      <input
+                                        aria-invalid={Boolean(colorMessage)}
+                                        onChange={(event) =>
+                                          handleVariantChange(
+                                            index,
+                                            "color",
+                                            event.target.value,
+                                          )
+                                        }
+                                        placeholder="Color"
+                                        value={variant.color}
+                                      />
+                                      <FieldHint message={colorMessage} />
+                                    </label>
+                                    <label
+                                      className={`operations-field ${
+                                        sizeMessage
+                                          ? "operations-field--invalid"
+                                          : ""
+                                      }`}
+                                    >
+                                      <FieldLabel label="Size" required />
+                                      <input
+                                        aria-invalid={Boolean(sizeMessage)}
+                                        onChange={(event) =>
+                                          handleVariantChange(
+                                            index,
+                                            "size",
+                                            event.target.value,
+                                          )
+                                        }
+                                        placeholder="Size"
+                                        value={variant.size}
+                                      />
+                                      <FieldHint message={sizeMessage} />
+                                    </label>
+                                  </div>
+                                </div>
+
+                                <div className="operations-variant-group">
+                                  <div className="operations-variant-group__head">
+                                    <span>Commercial</span>
+                                    <strong>Price, markdown, and stock</strong>
+                                  </div>
+
+                                  <div className="operations-variant-row__grid operations-variant-row__grid--commercial">
+                                    <label
+                                      className={`operations-field ${
+                                        priceMessage
+                                          ? "operations-field--invalid"
+                                          : ""
+                                      }`}
+                                    >
+                                      <FieldLabel label="Price" required />
+                                      <input
+                                        aria-invalid={Boolean(priceMessage)}
+                                        min="0"
+                                        onChange={(event) =>
+                                          handleVariantChange(
+                                            index,
+                                            "price",
+                                            event.target.value,
+                                          )
+                                        }
+                                        placeholder="0"
+                                        step="0.01"
+                                        type="number"
+                                        value={variant.price}
+                                      />
+                                      <FieldHint message={priceMessage} />
+                                    </label>
+                                    <label
+                                      className={`operations-field ${
+                                        discountMessage
+                                          ? "operations-field--invalid"
+                                          : ""
+                                      }`}
+                                    >
+                                      <FieldLabel label="Discount" optional />
+                                      <input
+                                        aria-invalid={Boolean(discountMessage)}
+                                        min="0"
+                                        onChange={(event) =>
+                                          handleVariantChange(
+                                            index,
+                                            "discountPrice",
+                                            event.target.value,
+                                          )
+                                        }
+                                        placeholder="Optional"
+                                        step="0.01"
+                                        type="number"
+                                        value={variant.discountPrice}
+                                      />
+                                      <FieldHint
+                                        fallback="Optional markdown."
+                                        message={discountMessage}
+                                      />
+                                    </label>
+                                    <label
+                                      className={`operations-field ${
+                                        stockMessage
+                                          ? "operations-field--invalid"
+                                          : ""
+                                      }`}
+                                    >
+                                      <FieldLabel label="Stock" required />
+                                      <input
+                                        aria-invalid={Boolean(stockMessage)}
+                                        min="0"
+                                        onChange={(event) =>
+                                          handleVariantChange(
+                                            index,
+                                            "stockQuantity",
+                                            event.target.value,
+                                          )
+                                        }
+                                        placeholder="0"
+                                        step="1"
+                                        type="number"
+                                        value={variant.stockQuantity}
+                                      />
+                                      <FieldHint message={stockMessage} />
+                                    </label>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="operations-editor__footer">
+                      <p>
+                        Product create, update, and delete actions are routed
+                        through the admin product endpoints and persisted to
+                        database.
+                      </p>
+                      <button
+                        className="orders-page__button orders-page__button--primary"
+                        disabled={isProductActionPending}
+                        type="submit"
+                      >
+                        {selectedProductId ? (
+                          <PencilLine size={16} />
+                        ) : (
+                          <CirclePlus size={16} />
+                        )}
+                        {uploadingImages
+                          ? "Uploading images"
+                          : isProductActionPending
+                            ? "Saving"
+                          : selectedProductId
+                            ? "Save product"
+                            : "Create product"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </section>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

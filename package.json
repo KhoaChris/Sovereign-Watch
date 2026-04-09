@@ -1,0 +1,6 @@
+{
+  "scripts": {
+    "firebase:functions-emulator": "firebase emulators:start --only functions",
+    "firebase:functions-emulator:save": "firebase emulators:start --only functions --import ./firebase-emulator-data --export-on-exit"
+  }
+}

@@ -1,0 +1,476 @@
+.hero-banner-3d {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28rem;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: calc(var(--radius-card) + 0.35rem);
+  background:
+    radial-gradient(circle at 50% 18%, rgba(232, 194, 151, 0.16), transparent 16rem),
+    radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.07), transparent 18rem),
+    linear-gradient(180deg, rgba(14, 17, 25, 0.98), rgba(7, 8, 12, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    var(--shadow-frame),
+    var(--shadow-glow);
+}
+
+.hero-banner-3d__noise,
+.hero-banner-3d__backdrop,
+.hero-banner-3d__rail,
+.hero-banner-3d__rule,
+.hero-banner-3d__grid,
+.hero-banner-3d__ring,
+.hero-banner-3d__beam,
+.hero-banner-3d__watch-shadow,
+.hero-banner-3d__bezel-reflection,
+.hero-banner-3d__dial-glow,
+.hero-banner-3d__dial-cutout,
+.hero-banner-3d__marker,
+.hero-banner-3d__hand,
+.hero-banner-3d__pin,
+.hero-banner-3d__reflection,
+.hero-banner-3d__pulse,
+.hero-banner-3d__glint {
+  position: absolute;
+}
+
+.hero-banner-3d__noise {
+  inset: 0;
+  opacity: 0.14;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.2), transparent 1px),
+    radial-gradient(circle at 70% 35%, rgba(255, 255, 255, 0.14), transparent 1px),
+    radial-gradient(circle at 40% 70%, rgba(255, 255, 255, 0.16), transparent 1px);
+  background-size: 170px 170px;
+}
+
+.hero-banner-3d__backdrop {
+  top: 50%;
+  width: 24rem;
+  height: 24rem;
+  border-radius: 50%;
+  filter: blur(32px);
+  transform: translateY(-50%);
+}
+
+.hero-banner-3d__backdrop--left {
+  left: -8rem;
+  background: rgba(207, 168, 125, 0.17);
+}
+
+.hero-banner-3d__backdrop--right {
+  right: -10rem;
+  background: rgba(78, 103, 167, 0.12);
+}
+
+.hero-banner-3d__rail {
+  top: 9%;
+  bottom: 9%;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.25), transparent);
+}
+
+.hero-banner-3d__rail--left {
+  left: 1.2rem;
+}
+
+.hero-banner-3d__rail--right {
+  right: 1.2rem;
+}
+
+.hero-banner-3d__rule {
+  left: 1.4rem;
+  right: 1.4rem;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.14), transparent);
+}
+
+.hero-banner-3d__rule--top {
+  top: 1.2rem;
+}
+
+.hero-banner-3d__rule--bottom {
+  bottom: 1.2rem;
+}
+
+.hero-banner-3d__grid {
+  inset: 18% 12%;
+  opacity: 0.22;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 4.2rem 4.2rem;
+  mask-image: radial-gradient(circle at center, black 28%, transparent 84%);
+  -webkit-mask-image: radial-gradient(circle at center, black 28%, transparent 84%);
+}
+
+.hero-banner-3d__ring {
+  top: 50%;
+  left: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.hero-banner-3d__ring--outer {
+  width: 92%;
+  height: 92%;
+}
+
+.hero-banner-3d__ring--mid {
+  width: 64%;
+  height: 64%;
+}
+
+.hero-banner-3d__ring--inner {
+  width: 42%;
+  height: 42%;
+}
+
+.hero-banner-3d__beam {
+  top: 50%;
+  width: 18rem;
+  height: 11rem;
+  filter: blur(24px);
+  transform: translateY(-50%);
+}
+
+.hero-banner-3d__beam--left {
+  left: 6%;
+  background: linear-gradient(90deg, rgba(207, 168, 125, 0.18), transparent);
+}
+
+.hero-banner-3d__beam--right {
+  right: 4%;
+  background: linear-gradient(270deg, rgba(255, 255, 255, 0.08), transparent);
+}
+
+.hero-banner-3d__watch-stage {
+  position: relative;
+  z-index: 2;
+  transform-style: preserve-3d;
+}
+
+.hero-banner-3d__watch-shadow {
+  bottom: 1.2rem;
+  left: 50%;
+  width: 72%;
+  height: 2rem;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.76), transparent 72%);
+  filter: blur(18px);
+  transform: translateX(-50%);
+}
+
+.hero-banner-3d__watch {
+  position: relative;
+  width: 16rem;
+  height: 24rem;
+}
+
+.hero-banner-3d__strap {
+  position: absolute;
+  left: 50%;
+  width: 4.2rem;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05), transparent 18%, transparent 82%, rgba(255, 255, 255, 0.05)),
+    linear-gradient(180deg, #23272e, #050608 58%, #252a30);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 22px 50px rgba(0, 0, 0, 0.34);
+}
+
+.hero-banner-3d__strap::after {
+  content: "";
+  position: absolute;
+  inset: 0.45rem 0.7rem;
+  border-radius: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.hero-banner-3d__strap--top {
+  top: 0;
+  height: 8.6rem;
+}
+
+.hero-banner-3d__strap--bottom {
+  bottom: 0;
+  height: 8.8rem;
+}
+
+.hero-banner-3d__dial-shell {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 13rem;
+  height: 13rem;
+  padding: 0.55rem;
+  border-radius: 50%;
+  background:
+    linear-gradient(135deg, #f2dcc0 0%, #ca9d6e 26%, #5f4633 58%, #e6c29b 100%);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.35),
+    0 26px 80px rgba(0, 0, 0, 0.42),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+  transform: translate(-50%, -50%);
+}
+
+.hero-banner-3d__bezel-reflection {
+  inset: 0.2rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.45), transparent 30%, transparent 62%, rgba(255, 255, 255, 0.18));
+  mix-blend-mode: screen;
+}
+
+.hero-banner-3d__dial {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background:
+    radial-gradient(circle at 50% 20%, rgba(255, 255, 255, 0.14), transparent 22%),
+    radial-gradient(circle at 50% 55%, rgba(22, 27, 40, 0.2), transparent 58%),
+    linear-gradient(180deg, #10141c 0%, #06080d 100%);
+  box-shadow: inset 0 0 44px rgba(0, 0, 0, 0.7);
+}
+
+.hero-banner-3d__dial-glow {
+  inset: 20% 23%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(207, 168, 125, 0.2), transparent 72%);
+  filter: blur(12px);
+}
+
+.hero-banner-3d__dial-cutout {
+  top: 28%;
+  width: 1.3rem;
+  height: 1.3rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.12), rgba(0, 0, 0, 0.32));
+}
+
+.hero-banner-3d__dial-cutout--left {
+  left: 22%;
+}
+
+.hero-banner-3d__dial-cutout--right {
+  right: 22%;
+}
+
+.hero-banner-3d__marker {
+  top: 50%;
+  left: 50%;
+  border-radius: 999px;
+  transform-origin: center;
+}
+
+.hero-banner-3d__marker--primary {
+  width: 0.22rem;
+  height: 1.4rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), var(--color-champagne));
+}
+
+.hero-banner-3d__marker--secondary {
+  width: 0.12rem;
+  height: 0.8rem;
+  background: rgba(244, 236, 228, 0.65);
+}
+
+.hero-banner-3d__subdial {
+  position: absolute;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 35%, rgba(255, 255, 255, 0.08), transparent 36%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(0, 0, 0, 0.24));
+}
+
+.hero-banner-3d__subdial--lower {
+  bottom: 18%;
+  left: 23%;
+}
+
+.hero-banner-3d__subdial--upper {
+  top: 22%;
+  right: 24%;
+}
+
+.hero-banner-3d__hand {
+  top: 50%;
+  left: 50%;
+  border-radius: 999px;
+  transform-origin: left center;
+}
+
+.hero-banner-3d__hand--hour {
+  width: 3rem;
+  height: 0.24rem;
+  background: rgba(255, 255, 255, 0.88);
+  transform: translate(-12%, -50%) rotate(32deg);
+}
+
+.hero-banner-3d__hand--minute {
+  width: 3.8rem;
+  height: 0.16rem;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.9), var(--color-champagne));
+  transform: translate(-6%, -50%) rotate(-54deg);
+}
+
+.hero-banner-3d__hand--second {
+  width: 4.3rem;
+  height: 0.08rem;
+  background: rgba(207, 168, 125, 0.9);
+  transform: translate(-6%, -50%) rotate(118deg);
+}
+
+.hero-banner-3d__pin {
+  top: 50%;
+  left: 50%;
+  width: 0.95rem;
+  height: 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 50%, var(--color-pearl) 0.08rem, #050608 0.22rem, #050608 100%);
+  transform: translate(-50%, -50%);
+}
+
+.hero-banner-3d__crown {
+  position: absolute;
+  top: 50%;
+  right: 0.3rem;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.34), transparent 34%),
+    linear-gradient(135deg, #f0d1af, #a06f48 62%, #6c4b32);
+  box-shadow: 0 0 0 0.18rem rgba(28, 30, 37, 0.86);
+  transform: translateY(-50%);
+}
+
+.hero-banner-3d__reflection {
+  top: 1rem;
+  right: 2.2rem;
+  width: 7rem;
+  height: 18rem;
+  border-radius: 999px;
+  opacity: 0.48;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent);
+  transform: rotate(12deg);
+}
+
+.hero-banner-3d__annotation {
+  position: absolute;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: rgba(244, 236, 228, 0.72);
+  font-size: 0.66rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+.hero-banner-3d__annotation::before {
+  content: "";
+  width: 1.7rem;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.hero-banner-3d__annotation--top {
+  top: 4rem;
+  right: 1.2rem;
+}
+
+.hero-banner-3d__annotation--bottom {
+  bottom: 4rem;
+  left: 1.2rem;
+}
+
+.hero-banner-3d__pulse {
+  top: 50%;
+  left: 50%;
+  width: 26rem;
+  height: 26rem;
+  border: 1px solid rgba(207, 168, 125, 0.16);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.hero-banner-3d__glint {
+  top: -10%;
+  left: -20%;
+  width: 35%;
+  height: 130%;
+  opacity: 0.45;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent);
+  transform: rotate(16deg);
+}
+
+.hero-banner-3d__ticker {
+  position: absolute;
+  right: 1.2rem;
+  bottom: 1.1rem;
+  left: 1.2rem;
+  z-index: 3;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: rgba(244, 236, 228, 0.55);
+  font-size: 0.56rem;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+}
+
+@media (min-width: 720px) {
+  .hero-banner-3d {
+    min-height: 34rem;
+  }
+
+  .hero-banner-3d__watch {
+    width: 19rem;
+    height: 28rem;
+  }
+
+  .hero-banner-3d__dial-shell {
+    width: 15.2rem;
+    height: 15.2rem;
+  }
+
+  .hero-banner-3d__annotation--top {
+    right: 2.4rem;
+  }
+
+  .hero-banner-3d__annotation--bottom {
+    left: 2.4rem;
+  }
+
+  .hero-banner-3d__ticker {
+    right: 2.3rem;
+    left: 2.3rem;
+  }
+}
+
+@media (max-width: 719px) {
+  .hero-banner-3d__ticker {
+    flex-wrap: wrap;
+  }
+
+  .hero-banner-3d__annotation {
+    display: none;
+  }
+}
