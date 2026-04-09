@@ -4,10 +4,16 @@ backend/node_modules
 backend/dist
 .DS_Store
 *.log
+
+
 backend/.env
 frontend/.env
+backend/.env.example
+frontend/.env.example
+
 functions/node_modules
 .firebase
 firebase-debug.log
 firebase-debug.*.log
 firebase-emulator-data
+.firebaserc
