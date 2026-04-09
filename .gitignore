@@ -17,3 +17,5 @@ firebase-debug.log
 firebase-debug.*.log
 firebase-emulator-data
 .firebaserc
+
+.gitignore
