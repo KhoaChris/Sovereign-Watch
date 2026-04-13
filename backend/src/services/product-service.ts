@@ -472,17 +472,15 @@ export async function updateProduct(
   return updatedProduct;
 }
 
-export async function softDeleteProduct(productId: string): Promise<boolean> {
-  const existing = await getProductById(productId);
+export async function deleteProduct(productId: string): Promise<boolean> {
+  const documentReference = getDb().collection(PRODUCTS_COLLECTION).doc(productId);
+  const snapshot = await documentReference.get();
 
-  if (!existing) {
+  if (!snapshot.exists) {
     return false;
   }
 
-  await getDb().collection(PRODUCTS_COLLECTION).doc(productId).update({
-    deletedAt: nowIsoString(),
-    updatedAt: nowIsoString(),
-  });
+  await documentReference.delete();
 
   return true;
 }

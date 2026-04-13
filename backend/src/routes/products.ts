@@ -9,10 +9,10 @@ import {
 } from "../validators/product";
 import {
   createProduct,
+  deleteProduct,
   getProductDiscovery,
   getProductById,
   listProducts,
-  softDeleteProduct,
   updateProduct,
   uploadProductImage,
 } from "../services/product-service";
@@ -113,7 +113,7 @@ productsRouter.delete("/:id", requireAuth, requireRole("admin"), async (request,
     const productId = Array.isArray(request.params.id)
       ? request.params.id[0]
       : request.params.id;
-    const removed = await softDeleteProduct(productId);
+    const removed = await deleteProduct(productId);
 
     if (!removed) {
       response.status(404).json({ success: false, error: "Product not found." });

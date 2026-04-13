@@ -182,7 +182,7 @@ function activeFilterSummary(
   return summary;
 }
 
-function CollectionFeaturedCard({
+function CollectionProductCard({
   index,
   product,
 }: {
@@ -196,112 +196,29 @@ function CollectionFeaturedCard({
 
   return (
     <motion.article
-      className={`collection-page__feature collection-page__feature--${
-        index === 0 ? "primary" : "secondary"
-      }`}
-      initial={{ opacity: 0, y: 24 }}
-      transition={{ duration: 0.55, delay: index * 0.08 }}
-      viewport={{ amount: 0.25, once: true }}
-      whileInView={{ opacity: 1, y: 0 }}
-      whileHover={{ y: -5 }}
-    >
-      <Link
-        className="collection-page__feature-link"
-        to={`/collection/${product.id}`}
-      >
-        <div className="collection-page__feature-media">
-          <div className="collection-page__feature-aura collection-page__feature-aura--left" />
-          <div className="collection-page__feature-aura collection-page__feature-aura--right" />
-          {image ? (
-            <img
-              alt={product.name}
-              className="collection-page__feature-image"
-              src={image}
-            />
-          ) : (
-            <div className="collection-page__feature-placeholder">
-              Live image pending
-            </div>
-          )}
-        </div>
-
-        <div className="collection-page__feature-body">
-          <div className="collection-page__feature-meta">
-            <span className="collection-page__type-chip">{product.type}</span>
-            <span
-              className={`collection-page__stock-chip collection-page__stock-chip--${availability}`}
-            >
-              {availabilityLabels[availability]}
-            </span>
-          </div>
-
-          <div className="collection-page__feature-copy">
-            <h2 className="collection-page__feature-title">{product.name}</h2>
-            <p className="collection-page__feature-description">
-              {product.description}
-            </p>
-          </div>
-
-          <div className="collection-page__feature-foot">
-            <div className="collection-page__feature-price">
-              <span>From</span>
-              <strong>{formatCurrency(price)}</strong>
-            </div>
-            <div className="collection-page__feature-specs">
-              <span>{leadVariant?.size ?? "Collector spec"}</span>
-              <span>{leadVariant?.sku ?? product.id}</span>
-            </div>
-            <span className="collection-page__feature-cta">
-              View piece
-              <ArrowUpRight className="collection-page__feature-cta-icon" />
-            </span>
-          </div>
-        </div>
-      </Link>
-    </motion.article>
-  );
-}
-
-function CollectionGalleryCard({
-  index,
-  product,
-}: {
-  index: number;
-  product: ProductRecord;
-}) {
-  const price = productStartingPrice(product);
-  const availability = productAvailability(product);
-  const leadVariant = product.variants[0];
-  const image = productLeadImage(product);
-
-  return (
-    <motion.article
-      className="collection-page__gallery-card"
+      className="collection-page__card"
       initial={{ opacity: 0, y: 22 }}
       transition={{ duration: 0.45, delay: Math.min(index, 6) * 0.04 }}
       viewport={{ amount: 0.15, once: true }}
       whileInView={{ opacity: 1, y: 0 }}
       whileHover={{ y: -4 }}
     >
-      <Link
-        className="collection-page__gallery-link"
-        to={`/collection/${product.id}`}
-      >
-        <div className="collection-page__gallery-media">
-          <div className="collection-page__gallery-glow" />
+      <Link className="collection-page__card-link" to={`/collection/${product.id}`}>
+        <div className="collection-page__card-media">
+          <div className="collection-page__card-glow" />
           {image ? (
             <img
               alt={product.name}
-              className="collection-page__gallery-image"
+              className="collection-page__card-image"
               src={image}
             />
           ) : (
-            <div className="collection-page__gallery-placeholder">
+            <div className="collection-page__card-placeholder">
               Live image pending
             </div>
           )}
 
-          <div className="collection-page__gallery-overlay">
+          <div className="collection-page__card-overlay">
             <span className="collection-page__type-chip">{product.type}</span>
             <span
               className={`collection-page__stock-chip collection-page__stock-chip--${availability}`}
@@ -311,22 +228,30 @@ function CollectionGalleryCard({
           </div>
         </div>
 
-        <div className="collection-page__gallery-body">
-          <div className="collection-page__gallery-heading">
-            <h3 className="collection-page__gallery-title">{product.name}</h3>
-            <p className="collection-page__gallery-price">
-              {formatCurrency(price)}
+        <div className="collection-page__card-body">
+          <div className="collection-page__card-copy">
+            <h2 className="collection-page__card-title">{product.name}</h2>
+            <p className="collection-page__card-description">
+              {product.description}
             </p>
           </div>
-          <p className="collection-page__gallery-description">
-            {product.description}
-          </p>
-          <div className="collection-page__gallery-foot">
-            <div className="collection-page__gallery-specs">
+
+          <div className="collection-page__card-price">
+            <span className="collection-page__card-price-label">From</span>
+            <strong className="collection-page__card-price-value">
+              {formatCurrency(price)}
+            </strong>
+          </div>
+
+          <div className="collection-page__card-foot">
+            <div className="collection-page__card-specs">
               <span>{leadVariant?.size ?? "Collector spec"}</span>
-              <span>{leadVariant?.color ?? "Signature tone"}</span>
+              <span>{leadVariant?.sku ?? product.id}</span>
             </div>
-            <ArrowUpRight className="collection-page__gallery-arrow" />
+            <span className="collection-page__card-cta">
+              View piece
+              <ArrowUpRight className="collection-page__card-arrow" />
+            </span>
           </div>
         </div>
       </Link>
@@ -334,16 +259,46 @@ function CollectionGalleryCard({
   );
 }
 
-function CollectionSkeleton({
-  variant,
-}: {
-  variant: "feature-primary" | "feature-secondary" | "gallery";
-}) {
+function CollectionSkeleton() {
   return (
     <div
-      className={`collection-page__skeleton collection-page__skeleton--${variant}`}
+      aria-hidden="true"
+      className="collection-page__skeleton collection-page__skeleton--card"
     >
-      <div className="collection-page__skeleton-shimmer" />
+      <div className="collection-page__skeleton-card">
+        <div className="collection-page__skeleton-media">
+          <div className="collection-page__skeleton-overlay">
+            <span className="collection-page__skeleton-block collection-page__skeleton-pill collection-page__skeleton-pill--type" />
+            <span className="collection-page__skeleton-block collection-page__skeleton-pill collection-page__skeleton-pill--stock" />
+          </div>
+
+          <div className="collection-page__skeleton-image-wrap">
+            <div className="collection-page__skeleton-block collection-page__skeleton-image" />
+          </div>
+        </div>
+
+        <div className="collection-page__skeleton-body">
+          <div className="collection-page__skeleton-copy">
+            <span className="collection-page__skeleton-block collection-page__skeleton-line collection-page__skeleton-line--title" />
+            <span className="collection-page__skeleton-block collection-page__skeleton-line collection-page__skeleton-line--body" />
+            <span className="collection-page__skeleton-block collection-page__skeleton-line collection-page__skeleton-line--body collection-page__skeleton-line--body-short" />
+          </div>
+
+          <div className="collection-page__skeleton-price">
+            <span className="collection-page__skeleton-block collection-page__skeleton-line collection-page__skeleton-line--label" />
+            <span className="collection-page__skeleton-block collection-page__skeleton-line collection-page__skeleton-line--price" />
+          </div>
+
+          <div className="collection-page__skeleton-foot">
+            <div className="collection-page__skeleton-specs">
+              <span className="collection-page__skeleton-block collection-page__skeleton-line collection-page__skeleton-line--spec" />
+              <span className="collection-page__skeleton-block collection-page__skeleton-line collection-page__skeleton-line--spec collection-page__skeleton-line--spec-wide" />
+            </div>
+
+            <span className="collection-page__skeleton-block collection-page__skeleton-line collection-page__skeleton-line--cta" />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -564,8 +519,7 @@ export function CollectionPage() {
     };
   }, [currentQuery, currentRequestKey]);
 
-  const featuredItems = discovery?.items.slice(0, 2) ?? [];
-  const galleryItems = discovery?.items.slice(2) ?? [];
+  const collectionItems = discovery?.items ?? [];
   const activeSummary = activeFilterSummary(discovery, currentQuery);
   const hasActiveFilters = activeSummary.length > 0;
   const currentPriceMin = searchParams.get("priceMin") ?? "";
@@ -951,17 +905,11 @@ export function CollectionPage() {
           ) : null}
 
           {!activeError && loading ? (
-            <>
-              <section className="collection-page__featured">
-                <CollectionSkeleton variant="feature-primary" />
-                <CollectionSkeleton variant="feature-secondary" />
-              </section>
-              <section className="collection-page__gallery">
-                {Array.from({ length: 6 }).map((_, index) => (
-                  <CollectionSkeleton key={index} variant="gallery" />
-                ))}
-              </section>
-            </>
+            <section className="collection-page__cards">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <CollectionSkeleton key={index} />
+              ))}
+            </section>
           ) : null}
 
           {!activeError &&
@@ -990,29 +938,15 @@ export function CollectionPage() {
           !loading &&
           discovery &&
           discovery.items.length > 0 ? (
-            <>
-              <section className="collection-page__featured">
-                {featuredItems.map((product, index) => (
-                  <CollectionFeaturedCard
-                    key={product.id}
-                    index={index}
-                    product={product}
-                  />
-                ))}
-              </section>
-
-              {galleryItems.length > 0 ? (
-                <section className="collection-page__gallery">
-                  {galleryItems.map((product, index) => (
-                    <CollectionGalleryCard
-                      key={product.id}
-                      index={index}
-                      product={product}
-                    />
-                  ))}
-                </section>
-              ) : null}
-            </>
+            <section className="collection-page__cards">
+              {collectionItems.map((product, index) => (
+                <CollectionProductCard
+                  key={product.id}
+                  index={index}
+                  product={product}
+                />
+              ))}
+            </section>
           ) : null}
         </div>
       </div>

@@ -14,6 +14,7 @@ import {
   signInWithEmailAndPassword,
   type FirebaseAuthTokens,
 } from "../services/firebase-auth";
+import { useFeedback } from "../feedback/feedback-context";
 import { setApiAuthToken, storefrontApi } from "../services/api";
 import type {
   AuthUserProfile,
@@ -49,7 +50,13 @@ type StorefrontAction =
   | { type: "auth/error"; error: string }
   | { type: "auth/signed_out" }
   | { type: "session/hydrate_start" }
-  | { type: "session/hydrate_success"; cart: CartRecord; favorites: FavoriteRecord; tokens: FirebaseAuthTokens; user: AuthUserProfile }
+  | {
+      type: "session/hydrate_success";
+      cart: CartRecord;
+      favorites: FavoriteRecord;
+      tokens: FirebaseAuthTokens;
+      user: AuthUserProfile;
+    }
   | { type: "tokens/update"; tokens: FirebaseAuthTokens }
   | { type: "profile/update_success"; user: AuthUserProfile }
   | { type: "favorites/update"; favorites: FavoriteRecord }
@@ -170,7 +177,10 @@ function persistUser(user: AuthUserProfile | null): void {
   window.localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
 }
 
-function readScopedStorefrontCache<T>(storageKey: string, ownerId: string): T | null {
+function readScopedStorefrontCache<T>(
+  storageKey: string,
+  ownerId: string,
+): T | null {
   if (typeof window === "undefined") {
     return null;
   }
@@ -195,7 +205,11 @@ function readScopedStorefrontCache<T>(storageKey: string, ownerId: string): T | 
   }
 }
 
-function persistScopedStorefrontCache<T>(storageKey: string, ownerId: string, value: T | null): void {
+function persistScopedStorefrontCache<T>(
+  storageKey: string,
+  ownerId: string,
+  value: T | null,
+): void {
   if (typeof window === "undefined") {
     return;
   }
@@ -264,7 +278,10 @@ function initialState(): StorefrontState {
   const tokens = readStoredTokens();
   const storedUser = readStoredUser();
   const storedFavorites = storedUser
-    ? readScopedStorefrontCache<FavoriteRecord>(FAVORITES_STORAGE_KEY, storedUser.id)
+    ? readScopedStorefrontCache<FavoriteRecord>(
+        FAVORITES_STORAGE_KEY,
+        storedUser.id,
+      )
     : null;
   const storedCart = storedUser
     ? readScopedStorefrontCache<CartRecord>(CART_STORAGE_KEY, storedUser.id)
@@ -288,7 +305,10 @@ function initialState(): StorefrontState {
   };
 }
 
-function reducer(state: StorefrontState, action: StorefrontAction): StorefrontState {
+function reducer(
+  state: StorefrontState,
+  action: StorefrontAction,
+): StorefrontState {
   switch (action.type) {
     case "auth_modal/open":
       return {
@@ -335,13 +355,17 @@ function reducer(state: StorefrontState, action: StorefrontAction): StorefrontSt
         cart: action.cart,
         commerceLoading: false,
         favorites: action.favorites,
-        tokens: areTokensEqual(state.tokens, action.tokens) ? state.tokens : action.tokens,
+        tokens: areTokensEqual(state.tokens, action.tokens)
+          ? state.tokens
+          : action.tokens,
         user: action.user,
       };
     case "tokens/update":
       return {
         ...state,
-        tokens: areTokensEqual(state.tokens, action.tokens) ? state.tokens : action.tokens,
+        tokens: areTokensEqual(state.tokens, action.tokens)
+          ? state.tokens
+          : action.tokens,
       };
     case "profile/update_success":
       return {
@@ -420,11 +444,11 @@ async function fetchSessionBundle(
   const favorites =
     favoritesResult.status === "fulfilled"
       ? favoritesResult.value
-      : fallback.favorites ?? createEmptyFavoriteRecord(session.user.id);
+      : (fallback.favorites ?? createEmptyFavoriteRecord(session.user.id));
   const cart =
     cartResult.status === "fulfilled"
       ? cartResult.value
-      : fallback.cart ?? createEmptyCartRecord(session.user.id);
+      : (fallback.cart ?? createEmptyCartRecord(session.user.id));
 
   return {
     cart,
@@ -435,6 +459,7 @@ async function fetchSessionBundle(
 
 export function StorefrontProvider({ children }: PropsWithChildren) {
   const [state, dispatch] = useReducer(reducer, undefined, initialState);
+  const { notify } = useFeedback();
   const tokens = state.tokens;
   const lastHydratedTokenKeyRef = useRef<string | null>(null);
   const role: ViewerRole = state.user?.role ?? "guest";
@@ -494,7 +519,9 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
         }
 
         try {
-          const refreshedTokens = await refreshFirebaseToken(tokens.refreshToken);
+          const refreshedTokens = await refreshFirebaseToken(
+            tokens.refreshToken,
+          );
           const bundle = await fetchSessionBundle(refreshedTokens, {
             cart: state.cart,
             favorites: state.favorites,
@@ -546,7 +573,11 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
       return;
     }
 
-    persistScopedStorefrontCache(FAVORITES_STORAGE_KEY, state.user.id, state.favorites);
+    persistScopedStorefrontCache(
+      FAVORITES_STORAGE_KEY,
+      state.user.id,
+      state.favorites,
+    );
     persistScopedStorefrontCache(CART_STORAGE_KEY, state.user.id, state.cart);
   }, [state.cart, state.favorites, state.user]);
 
@@ -557,7 +588,9 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
     }
 
     if (state.tokens.expiresAt <= Date.now() + 60_000) {
-      const refreshedTokens = await refreshFirebaseToken(state.tokens.refreshToken);
+      const refreshedTokens = await refreshFirebaseToken(
+        state.tokens.refreshToken,
+      );
       const normalizedTokens = {
         ...refreshedTokens,
         email: state.tokens.email || refreshedTokens.email,
@@ -627,10 +660,26 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
     try {
       const tokens = await signInWithEmailAndPassword(email.trim(), password);
       await completeAuthFlow(tokens);
+      notify({
+        description: "Favorites, cart, and account surfaces are now synced.",
+        title: "Signed in successfully",
+        tone: "success",
+      });
     } catch (error) {
+      notify({
+        description:
+          error instanceof Error
+            ? error.message
+            : "Unable to sign in right now.",
+        title: "Sign-in failed",
+        tone: "error",
+      });
       dispatch({
         type: "auth/error",
-        error: error instanceof Error ? error.message : "Unable to sign in right now.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to sign in right now.",
       });
       throw error;
     }
@@ -640,12 +689,32 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
     dispatch({ type: "auth/request" });
 
     try {
-      const tokens = await createUserWithEmailAndPassword(fullName.trim(), email.trim(), password);
+      const tokens = await createUserWithEmailAndPassword(
+        fullName.trim(),
+        email.trim(),
+        password,
+      );
       await completeAuthFlow(tokens, { fullName: fullName.trim() });
+      notify({
+        description: "Your account is ready.",
+        title: "Account created",
+        tone: "success",
+      });
     } catch (error) {
+      notify({
+        description:
+          error instanceof Error
+            ? error.message
+            : "Unable to create your account right now.",
+        title: "Sign-up failed",
+        tone: "error",
+      });
       dispatch({
         type: "auth/error",
-        error: error instanceof Error ? error.message : "Unable to create your account right now.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to create your account right now.",
       });
       throw error;
     }
@@ -654,6 +723,11 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
   const signOut = () => {
     clearPersistedSession();
     dispatch({ type: "auth/signed_out" });
+    notify({
+      description: "Your account session has been closed.",
+      title: "Signed out",
+      tone: "info",
+    });
   };
 
   const refreshSession = async () => {
@@ -679,7 +753,10 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
     } catch (error) {
       dispatch({
         type: "auth/error",
-        error: error instanceof Error ? error.message : "Unable to refresh your session right now.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to refresh your session right now.",
       });
       throw error;
     }
@@ -693,10 +770,26 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
       const session = await storefrontApi.updateProfile(payload);
       persistUser(session.user);
       dispatch({ type: "profile/update_success", user: session.user });
+      notify({
+        description: "Your account details have been updated.",
+        title: "Profile saved",
+        tone: "success",
+      });
     } catch (error) {
+      notify({
+        description:
+          error instanceof Error
+            ? error.message
+            : "Unable to save your profile right now.",
+        title: "Profile update failed",
+        tone: "error",
+      });
       dispatch({
         type: "auth/error",
-        error: error instanceof Error ? error.message : "Unable to save your profile right now.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to save your profile right now.",
       });
       throw error;
     }
@@ -707,7 +800,9 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
     dispatch({ type: "auth/request" });
 
     try {
-      const isFavorite = state.favorites?.items.some((item) => item.productId === productId);
+      const isFavorite = state.favorites?.items.some(
+        (item) => item.productId === productId,
+      );
       const favorites = isFavorite
         ? await storefrontApi.removeFavorite(productId)
         : await storefrontApi.addFavorite(productId);
@@ -716,7 +811,10 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
     } catch (error) {
       dispatch({
         type: "auth/error",
-        error: error instanceof Error ? error.message : "Unable to update favorites right now.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to update favorites right now.",
       });
       throw error;
     }
@@ -727,12 +825,18 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
     dispatch({ type: "auth/request" });
 
     try {
-      const cart = await storefrontApi.addCartItem({ productVariantId, quantity });
+      const cart = await storefrontApi.addCartItem({
+        productVariantId,
+        quantity,
+      });
       dispatch({ type: "cart/update", cart });
     } catch (error) {
       dispatch({
         type: "auth/error",
-        error: error instanceof Error ? error.message : "Unable to update your cart right now.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to update your cart right now.",
       });
       throw error;
     }
@@ -748,7 +852,10 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
     } catch (error) {
       dispatch({
         type: "auth/error",
-        error: error instanceof Error ? error.message : "Unable to update your cart right now.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to update your cart right now.",
       });
       throw error;
     }
@@ -764,7 +871,10 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
     } catch (error) {
       dispatch({
         type: "auth/error",
-        error: error instanceof Error ? error.message : "Unable to update your cart right now.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to update your cart right now.",
       });
       throw error;
     }

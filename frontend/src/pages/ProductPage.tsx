@@ -4,12 +4,98 @@ import { motion } from "framer-motion";
 import { ArrowLeft, Heart, LoaderCircle, ShoppingBag } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
+import { useFeedback } from "../feedback/feedback-context";
 import { storefrontApi } from "../services/api";
 import type { ProductRecord, ProductVariant } from "../shared";
 import { useStorefront } from "../storefront/storefront-context";
 import "../styles/pages/product-page.css";
 
+function ProductLoadingState() {
+  return (
+    <section
+      aria-busy="true"
+      aria-live="polite"
+      className="product-page__loading"
+      role="status"
+    >
+      <div className="product-page__loading-copy">
+        <p className="product-page__state-eyebrow">Live archive</p>
+        <h1 className="product-page__state-title">Loading reference.</h1>
+        <p className="product-page__state-copy">
+          Syncing imagery, variants, and reserve details from the catalog.
+        </p>
+      </div>
+
+      <div className="product-page__loading-layout">
+        <div className="product-page__loading-visual">
+          <div className="product-page__loading-glow product-page__loading-glow--left" />
+          <div className="product-page__loading-glow product-page__loading-glow--right" />
+          <div className="product-page__loading-grid" />
+
+          <div className="product-page__loading-visual-meta product-page__loading-visual-meta--top">
+            <span className="product-page__loading-pill product-page__loading-pill--wide" />
+            <span className="product-page__loading-pill product-page__loading-pill--short" />
+          </div>
+
+          <div className="product-page__loading-media">
+            <div className="product-page__loading-watch" />
+            <div className="product-page__loading-halo" />
+          </div>
+
+          <div className="product-page__loading-visual-meta product-page__loading-visual-meta--bottom">
+            <span className="product-page__loading-pill product-page__loading-pill--medium" />
+            <span className="product-page__loading-pill product-page__loading-pill--wide" />
+          </div>
+        </div>
+
+        <div className="product-page__loading-content">
+          <div className="product-page__loading-panel">
+            <div className="product-page__loading-stack">
+              <span className="product-page__loading-line product-page__loading-line--title" />
+              <span className="product-page__loading-line product-page__loading-line--body" />
+              <span className="product-page__loading-line product-page__loading-line--body product-page__loading-line--body-short" />
+            </div>
+
+            <div className="product-page__loading-stat-grid">
+              <div className="product-page__loading-stat-card">
+                <span className="product-page__loading-line product-page__loading-line--label" />
+                <span className="product-page__loading-line product-page__loading-line--metric" />
+              </div>
+              <div className="product-page__loading-stat-card">
+                <span className="product-page__loading-line product-page__loading-line--label" />
+                <span className="product-page__loading-line product-page__loading-line--metric" />
+              </div>
+            </div>
+
+            <div className="product-page__loading-actions">
+              <span className="product-page__loading-button product-page__loading-button--ghost" />
+              <span className="product-page__loading-button product-page__loading-button--primary" />
+            </div>
+          </div>
+
+          <div className="product-page__loading-panel">
+            <div className="product-page__loading-stack">
+              <span className="product-page__loading-line product-page__loading-line--section-label" />
+              <span className="product-page__loading-line product-page__loading-line--body" />
+            </div>
+
+            <div className="product-page__loading-variants">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <span
+                  key={index}
+                  className="product-page__loading-variant"
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function ProductPage() {
+  const { notify } = useFeedback();
   const { productId } = useParams();
   const {
     addToCart,
@@ -26,10 +112,6 @@ export function ProductPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [favoriteBusy, setFavoriteBusy] = useState(false);
   const [cartBusy, setCartBusy] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [statusTone, setStatusTone] = useState<"neutral" | "success" | "error">(
-    "neutral",
-  );
 
   useEffect(() => {
     let active = true;
@@ -114,22 +196,30 @@ export function ProductPage() {
   async function handleAddToCart(): Promise<void> {
     if (!isAuthenticated) {
       openAuthModal("sign-in");
-      setStatusMessage("Sign in to add this reference to your reserve cart.");
-      setStatusTone("neutral");
+      notify({
+        description: "Sign in to add this reference to your reserve cart.",
+        title: "Authentication required",
+        tone: "info",
+      });
       return;
     }
 
     if (!selectedVariant) {
-      setStatusMessage(
-        "Select a reference variant before adding it to your reserve cart.",
-      );
-      setStatusTone("error");
+      notify({
+        description:
+          "Select a reference variant before adding it to your reserve cart.",
+        title: "Choose a variant first",
+        tone: "error",
+      });
       return;
     }
 
     if (selectedVariant.stockQuantity <= 0) {
-      setStatusMessage("This reference is currently unavailable.");
-      setStatusTone("error");
+      notify({
+        description: "This reference is currently unavailable.",
+        title: "Out of stock",
+        tone: "error",
+      });
       return;
     }
 
@@ -137,17 +227,20 @@ export function ProductPage() {
 
     try {
       await addToCart(selectedVariant.id, 1);
-      setStatusMessage(
-        `${product?.name ?? "Watch"} added to your reserve cart.`,
-      );
-      setStatusTone("success");
+      notify({
+        description: "The selected piece is now staged in your reserve cart.",
+        title: `${product?.name ?? "Watch"} added to cart`,
+        tone: "success",
+      });
     } catch (error) {
-      setStatusMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to update your reserve cart right now.",
-      );
-      setStatusTone("error");
+      notify({
+        description:
+          error instanceof Error
+            ? error.message
+            : "Unable to update your reserve cart right now.",
+        title: "Cart update failed",
+        tone: "error",
+      });
     } finally {
       setCartBusy(false);
     }
@@ -160,8 +253,11 @@ export function ProductPage() {
 
     if (!isAuthenticated) {
       openAuthModal("sign-in");
-      setStatusMessage("Sign in to save references to your favorites.");
-      setStatusTone("neutral");
+      notify({
+        description: "Sign in to save references to your favorites.",
+        title: "Authentication required",
+        tone: "info",
+      });
       return;
     }
 
@@ -169,19 +265,24 @@ export function ProductPage() {
 
     try {
       await toggleFavorite(product.id);
-      setStatusMessage(
-        isFavorite
-          ? `${product.name} removed from your favorites.`
-          : `${product.name} saved to your favorites.`,
-      );
-      setStatusTone("success");
+      notify({
+        description: isFavorite
+          ? "The reference was removed from your saved desk."
+          : "The reference was added to your saved desk.",
+        title: isFavorite
+          ? `${product.name} removed`
+          : `${product.name} saved`,
+        tone: "success",
+      });
     } catch (error) {
-      setStatusMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to update favorites right now.",
-      );
-      setStatusTone("error");
+      notify({
+        description:
+          error instanceof Error
+            ? error.message
+            : "Unable to update favorites right now.",
+        title: "Favorites update failed",
+        tone: "error",
+      });
     } finally {
       setFavoriteBusy(false);
     }
@@ -195,15 +296,7 @@ export function ProductPage() {
           Back to collection
         </Link>
 
-        {loading ? (
-          <div className="product-page__state-card" role="status">
-            <p className="product-page__state-eyebrow">Live archive</p>
-            <h1 className="product-page__state-title">Loading reference.</h1>
-            <p className="product-page__state-copy">
-              Pulling the latest product record from the collection service.
-            </p>
-          </div>
-        ) : null}
+        {loading ? <ProductLoadingState /> : null}
 
         {!loading && !product ? (
           <div className="product-page__state-card">
@@ -337,13 +430,6 @@ export function ProductPage() {
                           : "Sign in for cart"}
                     </button>
                   </div>
-                  {statusMessage ? (
-                    <p
-                      className={`product-page__status product-page__status--${statusTone}`}
-                    >
-                      {statusMessage}
-                    </p>
-                  ) : null}
                 </div>
 
                 <div className="product-page__variant-section">

@@ -3,15 +3,19 @@ import {
   useDeferredValue,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ChangeEvent,
   type FormEvent,
+  type ReactNode,
 } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import {
+  ArrowLeft,
   ArrowDownRight,
   ArrowUpRight,
   Boxes,
+  ChevronDown,
   CirclePlus,
   Download,
   LayoutDashboard,
@@ -27,12 +31,14 @@ import {
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
+import { useFeedback } from "../feedback/feedback-context";
 import { storefrontApi } from "../services/api";
 import { useStorefront } from "../storefront/storefront-context";
 import type {
   CreateProductPayload,
   OrderRecord,
   OrderStatus,
+  PaymentMethod,
   PaymentStatus,
   ProductRecord,
   ProductVariantInput,
@@ -95,6 +101,11 @@ interface VariantLookupEntry {
   variant: ProductVariant;
 }
 
+interface AdminPresetOption {
+  detail: string;
+  label: string;
+}
+
 const PRODUCT_IMAGE_ACCEPT = ".png,.jpg,.jpeg,image/png,image/jpeg";
 const PRODUCT_IMAGE_MAX_BYTES = 4 * 1024 * 1024;
 const PRODUCT_IMAGE_TYPES = new Set(["image/png", "image/jpeg"]);
@@ -104,6 +115,56 @@ const EMBEDDED_IMAGE_MAX_DIMENSION = 1400;
 const EMBEDDED_IMAGE_MAX_CHARS = 180_000;
 const EMBEDDED_IMAGE_MIN_QUALITY = 0.42;
 const EMBEDDED_IMAGE_TOTAL_MAX_CHARS = 600_000;
+
+const BRAND_PRESETS: AdminPresetOption[] = [
+  {
+    label: "Rolex",
+    detail: "Swiss luxury benchmark for iconic collector references.",
+  },
+  {
+    label: "Hublot",
+    detail: "Modern haute horlogerie with bold sport-luxury energy.",
+  },
+  {
+    label: "Hamilton",
+    detail: "Heritage-led Swiss maker with cinematic and aviation roots.",
+  },
+  {
+    label: "Apple",
+    detail: "Premium connected ecosystem for high-end wearable tech.",
+  },
+  {
+    label: "Samsung",
+    detail: "Flagship smart wearable and advanced device maker.",
+  },
+];
+
+const CATEGORY_PRESETS: AdminPresetOption[] = [
+  {
+    label: "Luxury",
+    detail: "Prestige-driven pieces with elevated finishing and brand equity.",
+  },
+  {
+    label: "Sport",
+    detail: "Performance-oriented references built for active daily wear.",
+  },
+  {
+    label: "HighTech",
+    detail: "Connected and engineering-forward wearables or hybrid pieces.",
+  },
+  {
+    label: "Chronograph",
+    detail: "Timing-focused models with motorsport or pilot character.",
+  },
+  {
+    label: "Smartwatch",
+    detail: "Digital-first wristwear with health, utility, and app flows.",
+  },
+  {
+    label: "Heritage",
+    detail: "Classic archival, dress-led, or collector-minded references.",
+  },
+];
 
 function readImageFile(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -256,6 +317,207 @@ function FieldHint({
     >
       &nbsp;
     </p>
+  );
+}
+
+function findPresetOption(
+  options: AdminPresetOption[],
+  value: string,
+): AdminPresetOption | null {
+  const normalizedValue = value.trim().toLowerCase();
+
+  if (!normalizedValue) {
+    return null;
+  }
+
+  return (
+    options.find((option) => option.label.toLowerCase() === normalizedValue) ??
+    null
+  );
+}
+
+function presetFieldFallback(
+  options: AdminPresetOption[],
+  value: string,
+  fieldLabel: string,
+): { message: string; tone: "accent" | "muted" } {
+  const selectedPreset = findPresetOption(options, value);
+
+  if (selectedPreset) {
+    return {
+      message: selectedPreset.detail,
+      tone: "accent",
+    };
+  }
+
+  return {
+    message: `Choose a ${fieldLabel.toLowerCase()} preset or type a custom value.`,
+    tone: "muted",
+  };
+}
+
+function getFilteredPresetOptions(
+  options: AdminPresetOption[],
+  query: string,
+): AdminPresetOption[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  const sorted = [...options].sort((left, right) =>
+    left.label.localeCompare(right.label),
+  );
+
+  if (!normalizedQuery) {
+    return sorted;
+  }
+
+  return sorted.filter((option) => {
+    return [option.label, option.detail]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalizedQuery);
+  });
+}
+
+function PresetLookupField({
+  fieldLabel,
+  invalid = false,
+  onChange,
+  onPick,
+  options,
+  placeholder,
+  value,
+}: {
+  fieldLabel: string;
+  invalid?: boolean;
+  onChange: (value: string) => void;
+  onPick: (value: string) => void;
+  options: AdminPresetOption[];
+  placeholder: string;
+  value: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const filteredOptions = useMemo(
+    () => getFilteredPresetOptions(options, value),
+    [options, value],
+  );
+  const selectedOption = findPresetOption(options, value);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        wrapperRef.current &&
+        !wrapperRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [isOpen]);
+
+  return (
+    <div className="operations-field__lookup" ref={wrapperRef}>
+      <div
+        className={`operations-field__lookup-shell ${
+          isOpen ? "operations-field__lookup-shell--open" : ""
+        } ${invalid ? "operations-field__lookup-shell--invalid" : ""}`}
+      >
+        <input
+          aria-expanded={isOpen}
+          aria-haspopup="listbox"
+          aria-invalid={invalid}
+          onChange={(event) => {
+            onChange(event.target.value);
+            setIsOpen(true);
+          }}
+          onFocus={() => setIsOpen(true)}
+          placeholder={placeholder}
+          value={value}
+        />
+        <button
+          aria-label={`Toggle ${fieldLabel.toLowerCase()} presets`}
+          className="operations-field__lookup-toggle"
+          onClick={() => setIsOpen((current) => !current)}
+          type="button"
+        >
+          <ChevronDown
+            className={`operations-field__lookup-chevron ${
+              isOpen ? "operations-field__lookup-chevron--open" : ""
+            }`}
+            size={18}
+          />
+        </button>
+      </div>
+
+      {isOpen ? (
+        <div className="operations-field__lookup-panel">
+          <div className="operations-field__lookup-head">
+            <span>{fieldLabel} library</span>
+            <span>{filteredOptions.length} sorted A-Z</span>
+          </div>
+
+          {filteredOptions.length > 0 ? (
+            <div
+              aria-label={`${fieldLabel} options`}
+              className="operations-field__lookup-list"
+              role="listbox"
+            >
+              {filteredOptions.map((option) => {
+                const isSelected =
+                  option.label.toLowerCase() === value.trim().toLowerCase();
+
+                return (
+                  <button
+                    key={option.label}
+                    aria-selected={isSelected}
+                    className={`operations-field__lookup-option ${
+                      isSelected
+                        ? "operations-field__lookup-option--selected"
+                        : ""
+                    }`}
+                    onClick={() => {
+                      onPick(option.label);
+                      setIsOpen(false);
+                    }}
+                    role="option"
+                    type="button"
+                  >
+                    <div>
+                      <strong>{option.label}</strong>
+                      <p>{option.detail}</p>
+                    </div>
+                    {isSelected ? (
+                      <span className="operations-field__lookup-tag">
+                        Selected
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="operations-field__lookup-empty">
+              No preset matches. Keep typing to use a custom{" "}
+              {fieldLabel.toLowerCase()} value.
+            </div>
+          )}
+
+          {!selectedOption && value.trim().length > 0 ? (
+            <p className="operations-field__lookup-note">
+              Custom value ready: {value.trim()}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -937,50 +1199,353 @@ function DistributionMeter({ segments }: { segments: DonutSegment[] }) {
   );
 }
 
-function MemberOrderCard({ order }: { order: OrderRecord }) {
+type MemberOrderStageTone = "active" | "complete" | "issue" | "waiting";
+
+interface MemberOrderStage {
+  detail: string;
+  label: string;
+  tone: MemberOrderStageTone;
+}
+
+function paymentMethodLabel(method: PaymentMethod | undefined): string {
+  switch (method) {
+    case "card":
+      return "Card on confirmation";
+    case "bank_transfer":
+      return "Bank transfer";
+    case "cash_on_delivery":
+      return "Cash on delivery";
+    case "wallet":
+      return "Digital wallet";
+    default:
+      return "Awaiting selection";
+  }
+}
+
+function normalizeMemberMeta(
+  value: string | null | undefined,
+  fallback: string,
+): string {
+  if (!value) {
+    return fallback;
+  }
+
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return fallback;
+  }
+
+  const normalizedValue = trimmedValue.toLowerCase();
+
+  if (normalizedValue === "pending" || normalizedValue === "pending assignment") {
+    return fallback;
+  }
+
+  return trimmedValue;
+}
+
+function buildMemberOrderStages(order: OrderRecord): MemberOrderStage[] {
+  const paymentStatus = order.payment?.status;
+  const shippingStatus = order.shipping?.status;
+
+  const reserveStage: MemberOrderStage =
+    order.status === "cancelled"
+      ? {
+          detail: "Cancelled",
+          label: "Reserve",
+          tone: "issue",
+        }
+      : order.status === "pending"
+        ? {
+            detail: "Awaiting review",
+            label: "Reserve",
+            tone: "active",
+          }
+        : {
+            detail: "Reserve placed",
+            label: "Reserve",
+            tone: "complete",
+          };
+
+  const paymentStage: MemberOrderStage =
+    paymentStatus === "failed" || paymentStatus === "refunded"
+      ? {
+          detail: formatStatusLabel(paymentStatus),
+          label: "Payment",
+          tone: "issue",
+        }
+      : paymentStatus === "paid" || order.status === "delivered"
+        ? {
+            detail: "Paid",
+            label: "Payment",
+            tone: "complete",
+          }
+        : paymentStatus === "authorized" || paymentStatus === "pending"
+          ? {
+              detail: formatStatusLabel(paymentStatus),
+              label: "Payment",
+              tone: "active",
+            }
+          : ["confirmed", "paid", "processing", "shipped"].includes(order.status)
+            ? {
+                detail: "Queued",
+                label: "Payment",
+                tone: "active",
+              }
+            : {
+                detail: "Awaiting capture",
+                label: "Payment",
+                tone: "waiting",
+              };
+
+  const deliveryStage: MemberOrderStage =
+    order.status === "cancelled" || shippingStatus === "returned"
+      ? {
+          detail:
+            shippingStatus === "returned"
+              ? "Returned"
+              : "Delivery halted",
+          label: "Delivery",
+          tone: "issue",
+        }
+      : shippingStatus === "delivered" || order.status === "delivered"
+        ? {
+            detail: "Delivered",
+            label: "Delivery",
+            tone: "complete",
+          }
+        : shippingStatus === "in_transit" || order.status === "shipped"
+          ? {
+              detail: "In transit",
+              label: "Delivery",
+              tone: "active",
+            }
+          : shippingStatus === "packed" || order.status === "processing"
+            ? {
+                detail: "Preparing route",
+                label: "Delivery",
+                tone: "active",
+              }
+            : {
+                detail: "Queued",
+                label: "Delivery",
+                tone: "waiting",
+              };
+
+  return [reserveStage, paymentStage, deliveryStage];
+}
+
+function getRevealProps(prefersReducedMotion: boolean, delay = 0) {
+  if (prefersReducedMotion) {
+    return {};
+  }
+
+  return {
+    initial: { opacity: 0, y: 20 },
+    transition: {
+      delay,
+      duration: 0.45,
+      ease: [0.22, 1, 0.36, 1] as const,
+    },
+    viewport: { once: true, amount: 0.2 },
+    whileInView: { opacity: 1, y: 0 },
+  };
+}
+
+function MemberOrdersHero({
+  copy,
+  prefersReducedMotion,
+  signals,
+  title,
+}: {
+  copy: string;
+  prefersReducedMotion: boolean;
+  signals: Array<{ label: string; value: string }>;
+  title: string;
+}) {
+  return (
+    <motion.section
+      className="member-orders__hero"
+      {...getRevealProps(prefersReducedMotion)}
+    >
+      <Link className="member-orders__back-link" to="/collection">
+        <ArrowLeft className="member-orders__back-icon" />
+        Back to marketplace
+      </Link>
+
+      <div className="member-orders__hero-copy">
+        <p className="orders-page__eyebrow">Reserve desk</p>
+        <h1 className="orders-page__title">{title}</h1>
+        <p className="orders-page__copy">{copy}</p>
+      </div>
+
+      <div className="member-orders__hero-signal">
+        {signals.map((signal) => (
+          <div key={signal.label} className="member-orders__signal-item">
+            <span>{signal.label}</span>
+            <strong>{signal.value}</strong>
+          </div>
+        ))}
+      </div>
+    </motion.section>
+  );
+}
+
+function MemberOrdersStatePanel({
+  actions,
+  copy,
+  prefersReducedMotion,
+  title,
+}: {
+  actions?: ReactNode;
+  copy: string;
+  prefersReducedMotion: boolean;
+  title: string;
+}) {
+  return (
+    <motion.section
+      className="member-orders__state"
+      {...getRevealProps(prefersReducedMotion, 0.06)}
+    >
+      <div className="member-orders__state-head">
+        <p className="member-orders__state-copy">{title}</p>
+      </div>
+      <p className="member-orders__state-support">{copy}</p>
+      {actions ? <div className="member-orders__actions">{actions}</div> : null}
+    </motion.section>
+  );
+}
+
+function MemberOrdersSkeleton({
+  prefersReducedMotion,
+}: {
+  prefersReducedMotion: boolean;
+}) {
+  return (
+    <div className="member-orders__list member-orders__list--loading">
+      {[0, 1].map((index) => (
+        <motion.article
+          key={index}
+          className="member-orders__skeleton-card"
+          {...getRevealProps(prefersReducedMotion, index * 0.05)}
+        >
+          <div className="member-orders__skeleton-line member-orders__skeleton-line--eyebrow" />
+          <div className="member-orders__skeleton-line member-orders__skeleton-line--title" />
+          <div className="member-orders__skeleton-line member-orders__skeleton-line--meta" />
+          <div className="member-orders__skeleton-rail">
+            <div className="member-orders__skeleton-pill" />
+            <div className="member-orders__skeleton-pill" />
+            <div className="member-orders__skeleton-pill" />
+          </div>
+          <div className="member-orders__skeleton-grid">
+            <div className="member-orders__skeleton-block" />
+            <div className="member-orders__skeleton-block" />
+            <div className="member-orders__skeleton-block" />
+            <div className="member-orders__skeleton-block" />
+          </div>
+        </motion.article>
+      ))}
+    </div>
+  );
+}
+
+function MemberOrderCard({
+  order,
+  prefersReducedMotion,
+}: {
+  order: OrderRecord;
+  prefersReducedMotion: boolean;
+}) {
+  const stages = buildMemberOrderStages(order);
+  const paymentStatusLabel =
+    order.payment?.status !== undefined
+      ? formatStatusLabel(order.payment.status)
+      : "Awaiting capture";
+  const shippingStatusLabel =
+    order.shipping?.status !== undefined
+      ? formatStatusLabel(order.shipping.status)
+      : "Queued";
+  const courierLabel = normalizeMemberMeta(
+    order.shipping?.courierName,
+    "Awaiting courier",
+  );
+  const trackingLabel = normalizeMemberMeta(
+    order.shipping?.trackingNumber,
+    "Pending dispatch",
+  );
+  const itemCountLabel = `${order.items.length} piece${
+    order.items.length === 1 ? "" : "s"
+  }`;
+
   return (
     <motion.article
       className="member-orders__card"
-      initial={{ opacity: 0, y: 18 }}
-      transition={{ duration: 0.42 }}
-      viewport={{ amount: 0.2, once: true }}
-      whileInView={{ opacity: 1, y: 0 }}
+      {...getRevealProps(prefersReducedMotion)}
     >
       <div className="member-orders__card-head">
-        <div>
-          <p className="orders-page__eyebrow">{order.orderNumber}</p>
-          <h2 className="member-orders__card-title">{order.shippingAddress}</h2>
+        <div className="member-orders__card-copy">
+          <div className="member-orders__card-topline">
+            <p className="orders-page__eyebrow">Reserve record</p>
+            <strong
+              className={`member-orders__pill member-orders__pill--${order.status}`}
+            >
+              {formatStatusLabel(order.status)}
+            </strong>
+          </div>
+          <h2 className="member-orders__card-title">{order.orderNumber}</h2>
           <p className="member-orders__card-date">
             {formatDateTime(order.createdAt)}
           </p>
         </div>
         <div className="member-orders__price-block">
-          <span>Total</span>
+          <span>Total reserved</span>
           <strong>{formatCurrency(order.totalAmount)}</strong>
         </div>
       </div>
 
-      <div className="member-orders__meta-grid">
-        <div>
-          <span>Status</span>
-          <strong
-            className={`member-orders__pill member-orders__pill--${order.status}`}
+      <div className="member-orders__timeline" aria-label="Reserve timeline">
+        {stages.map((stage) => (
+          <div
+            key={stage.label}
+            className={`member-orders__timeline-step member-orders__timeline-step--${stage.tone}`}
           >
-            {formatStatusLabel(order.status)}
-          </strong>
+            <span className="member-orders__timeline-label">{stage.label}</span>
+            <strong>{stage.detail}</strong>
+          </div>
+        ))}
+      </div>
+
+      <div className="member-orders__meta-grid">
+        <div className="member-orders__meta-item">
+          <span>Payment method</span>
+          <strong>{paymentMethodLabel(order.payment?.method)}</strong>
         </div>
-        <div>
-          <span>Payment</span>
-          <strong>{formatStatusLabel(order.payment?.status)}</strong>
+        <div className="member-orders__meta-item">
+          <span>Payment status</span>
+          <strong>{paymentStatusLabel}</strong>
         </div>
-        <div>
-          <span>Shipping</span>
-          <strong>{formatStatusLabel(order.shipping?.status)}</strong>
+        <div className="member-orders__meta-item">
+          <span>Shipping status</span>
+          <strong>{shippingStatusLabel}</strong>
         </div>
-        <div>
-          <span>Method</span>
-          <strong>{formatStatusLabel(order.payment?.method)}</strong>
+        <div className="member-orders__meta-item">
+          <span>Items in reserve</span>
+          <strong>{itemCountLabel}</strong>
         </div>
+        <div className="member-orders__meta-item">
+          <span>Courier</span>
+          <strong>{courierLabel}</strong>
+        </div>
+        <div className="member-orders__meta-item">
+          <span>Tracking</span>
+          <strong>{trackingLabel}</strong>
+        </div>
+      </div>
+
+      <div className="member-orders__address">
+        <span>Delivery address</span>
+        <p>{order.shippingAddress}</p>
       </div>
     </motion.article>
   );
@@ -991,7 +1556,9 @@ export function OrdersPage({
 }: {
   fallbackOrders?: OrderRecord[];
 }) {
+  const { confirm, notify } = useFeedback();
   const location = useLocation();
+  const prefersReducedMotion = useReducedMotion() ?? false;
   const { authLoading, isAdmin, isAuthenticated, openAuthModal, role, user } =
     useStorefront();
   const [orders, setOrders] = useState<OrderRecord[]>(fallbackOrders);
@@ -1007,14 +1574,15 @@ export function OrdersPage({
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
   const [pendingProductId, setPendingProductId] = useState<string | null>(null);
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
-  const [imageUploadMessage, setImageUploadMessage] = useState<string | null>(null);
+  const [imageUploadMessage, setImageUploadMessage] = useState<string | null>(
+    null,
+  );
   const [selectedImageNames, setSelectedImageNames] = useState<string[]>([]);
   const [uploadingImages, setUploadingImages] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [productSearch, setProductSearch] = useState("");
   const deferredProductSearch = useDeferredValue(productSearch);
   const [error, setError] = useState<string | null>(null);
-  const [productMessage, setProductMessage] = useState<string | null>(null);
 
   const checkoutNotice =
     (location.state as OrdersLocationState | null)?.cartCheckoutMessage ?? null;
@@ -1027,7 +1595,6 @@ export function OrdersPage({
       setProducts([]);
       setLoading(false);
       setError(null);
-      setProductMessage(null);
       return () => {
         active = false;
       };
@@ -1064,7 +1631,14 @@ export function OrdersPage({
     };
   }, [isAdmin, isAuthenticated]);
 
-  const latestOrder = orders[0];
+  const sortedOrders = useMemo(() => {
+    return [...orders].sort((left, right) => {
+      return (
+        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+      );
+    });
+  }, [orders]);
+  const latestOrder = sortedOrders[0];
   const pendingAttentionCount = useMemo(
     () =>
       orders.filter((order) =>
@@ -1137,6 +1711,16 @@ export function OrdersPage({
       return haystack.includes(query);
     });
   }, [deferredProductSearch, products]);
+  const brandPresetInfo = presetFieldFallback(
+    BRAND_PRESETS,
+    productForm.brandId,
+    "Brand",
+  );
+  const categoryPresetInfo = presetFieldFallback(
+    CATEGORY_PRESETS,
+    productForm.categoryId,
+    "Category",
+  );
 
   const thisMonthKey = useMemo(() => monthKey(new Date()), []);
   const previousMonthKey = useMemo(() => {
@@ -1272,12 +1856,20 @@ export function OrdersPage({
       const result = await fetchOperationsData(isAdmin);
       setOrders(result.orders);
       setProducts(sortProductsForAdmin(result.products));
+      notify({
+        description: "Orders and catalog data were synced again.",
+        title: "Dashboard refreshed",
+        tone: "success",
+      });
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to refresh operations data.",
-      );
+      notify({
+        description:
+          err instanceof Error
+            ? err.message
+            : "Unable to refresh operations data.",
+        title: "Refresh failed",
+        tone: "error",
+      });
     } finally {
       setRefreshing(false);
     }
@@ -1307,12 +1899,20 @@ export function OrdersPage({
         delete next[orderId];
         return next;
       });
+      notify({
+        description: "Status, payment, and fulfillment details are now synced.",
+        title: `${updatedOrder.orderNumber} updated`,
+        tone: "success",
+      });
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to update this order right now.",
-      );
+      notify({
+        description:
+          err instanceof Error
+            ? err.message
+            : "Unable to update this order right now.",
+        title: "Order update failed",
+        tone: "error",
+      });
     } finally {
       setPendingOrderId(null);
     }
@@ -1324,7 +1924,6 @@ export function OrdersPage({
       setProductForm(createProductForm(product));
       setImageUploadError(null);
       setImageUploadMessage(null);
-      setProductMessage(null);
       setSelectedImageNames([]);
     });
   }
@@ -1335,7 +1934,6 @@ export function OrdersPage({
       setProductForm(createEmptyProductForm());
       setImageUploadError(null);
       setImageUploadMessage(null);
-      setProductMessage(null);
       setSelectedImageNames([]);
     });
   }
@@ -1394,7 +1992,6 @@ export function OrdersPage({
     }
 
     setError(null);
-    setProductMessage(null);
     setUploadingImages(true);
 
     try {
@@ -1482,7 +2079,6 @@ export function OrdersPage({
     event: FormEvent<HTMLFormElement>,
   ): Promise<void> {
     event.preventDefault();
-    setProductMessage(null);
     setError(null);
 
     let payload: CreateProductPayload;
@@ -1490,9 +2086,12 @@ export function OrdersPage({
     try {
       payload = buildProductPayload(productForm);
     } catch (err) {
-      setProductMessage(
-        err instanceof Error ? err.message : "Product form is incomplete.",
-      );
+      notify({
+        description:
+          err instanceof Error ? err.message : "Product form is incomplete.",
+        title: "Product form incomplete",
+        tone: "error",
+      });
       return;
     }
 
@@ -1516,9 +2115,11 @@ export function OrdersPage({
         startTransition(() => {
           setProductForm(createProductForm(updatedProduct));
         });
-        setProductMessage(
-          `Updated ${updatedProduct.name} in the Firestore catalog.`,
-        );
+        notify({
+          description: "Changes are now live in the Firestore catalog.",
+          title: `${updatedProduct.name} saved`,
+          tone: "success",
+        });
       } else {
         const createdProduct = await storefrontApi.createProduct(payload);
 
@@ -1529,30 +2130,28 @@ export function OrdersPage({
           setSelectedProductId(createdProduct.id);
           setProductForm(createProductForm(createdProduct));
         });
-        setProductMessage(
-          `Added ${createdProduct.name} to the live Firestore catalog.`,
-        );
+        notify({
+          description: "The new product is live in the Firestore catalog.",
+          title: `${createdProduct.name} created`,
+          tone: "success",
+        });
       }
     } catch (err) {
-      setProductMessage(
-        err instanceof Error ? err.message : "Unable to save this product.",
-      );
+      notify({
+        description:
+          err instanceof Error ? err.message : "Unable to save this product.",
+        title: selectedProductId
+          ? "Product update failed"
+          : "Product creation failed",
+        tone: "error",
+      });
     } finally {
       setPendingProductId(null);
     }
   }
 
-  async function handleDeleteProduct(product: ProductRecord): Promise<void> {
-    if (
-      !window.confirm(
-        `Remove ${product.name} from the live storefront catalog?`,
-      )
-    ) {
-      return;
-    }
-
+  async function performDeleteProduct(product: ProductRecord): Promise<void> {
     setPendingProductId(product.id);
-    setProductMessage(null);
     setError(null);
 
     try {
@@ -1565,26 +2164,56 @@ export function OrdersPage({
         resetProductEditor();
       }
 
-      setProductMessage(`${product.name} was soft-deleted from Firestore.`);
+      notify({
+        description: "The selected product was removed.",
+        title: `${product.name} deleted`,
+        tone: "success",
+      });
     } catch (err) {
-      setProductMessage(
-        err instanceof Error ? err.message : "Unable to delete this product.",
-      );
+      notify({
+        description:
+          err instanceof Error ? err.message : "Unable to delete this product.",
+        title: "Delete failed",
+        tone: "error",
+      });
     } finally {
       setPendingProductId(null);
     }
   }
 
+  async function handleDeleteProduct(product: ProductRecord): Promise<void> {
+    const accepted = await confirm({
+      confirmLabel: "Delete product",
+      description: `${product.name} will be removed. This action cannot be undone.`,
+      title: "Delete this catalog entry?",
+      tone: "danger",
+    });
+
+    if (!accepted) {
+      return;
+    }
+
+    await performDeleteProduct(product);
+  }
+
   function handleExportCsv(): void {
     if (orders.length === 0) {
-      setProductMessage("No sales data is available yet for CSV export.");
+      notify({
+        description: "Create or sync orders first, then try exporting again.",
+        title: "No sales data to export",
+        tone: "info",
+      });
       return;
     }
 
     const fileStamp = new Date().toISOString().slice(0, 10);
     const csv = buildSalesCsv(orders, variantLookup);
     downloadCsv(`watch-shop-sales-${fileStamp}.csv`, csv);
-    setProductMessage("Sales report exported as CSV.");
+    notify({
+      description: "The report has been downloaded as a CSV file.",
+      title: "Sales report exported",
+      tone: "success",
+    });
   }
 
   function handlePrint(): void {
@@ -1595,15 +2224,31 @@ export function OrdersPage({
     uploadingImages ||
     (pendingProductId !== null &&
       (pendingProductId === selectedProductId || pendingProductId === "new"));
+  const memberHeroSignals = [
+    {
+      label: "Orders tracked",
+      value: loading ? "..." : String(orders.length),
+    },
+    {
+      label: "Latest reserve",
+      value: latestOrder?.orderNumber ?? "No reserve yet",
+    },
+    {
+      label: "Captured paid",
+      value: formatCurrency(capturedRevenue),
+    },
+  ];
 
   if (authLoading && !user) {
     return (
       <div className="orders-page">
         <div className="orders-page__ambient" />
         <div className="orders-page__shell">
-          <div className="orders-page__empty-state">
-            Loading your order desk.
-          </div>
+          <MemberOrdersStatePanel
+            copy="Restoring your reserve ledger and syncing the latest order activity."
+            prefersReducedMotion={prefersReducedMotion}
+            title="Loading your order desk"
+          />
         </div>
       </div>
     );
@@ -1614,29 +2259,35 @@ export function OrdersPage({
       <div className="orders-page">
         <div className="orders-page__ambient" />
         <div className="orders-page__shell">
-          <div className="orders-page__gate">
-            <p className="orders-page__eyebrow">Member desk</p>
-            <h1 className="orders-page__title">
-              Sign in to access orders, cart, and reserve actions.
-            </h1>
-            <p className="orders-page__copy">
-              Guest mode can browse the collection and inspect product pages.
-              Orders, checkout follow-up, and the admin operations room live
-              behind member access.
-            </p>
-            <div className="orders-page__gate-actions">
-              <button
-                className="orders-page__button orders-page__button--primary"
-                onClick={() => openAuthModal("sign-in")}
-                type="button"
-              >
-                Sign in
-              </button>
-              <Link className="orders-page__button" to="/collection">
-                Browse collection
-              </Link>
-            </div>
-          </div>
+          <MemberOrdersHero
+            copy="Sign in once to keep reserve confirmations, payment follow-up, and delivery updates attached to your member profile."
+            prefersReducedMotion={prefersReducedMotion}
+            signals={[
+              { label: "Access", value: "Guest" },
+              { label: "Unlocks", value: "Orders + tracking" },
+            ]}
+            title="A quieter desk for every reserve you place."
+          />
+
+          <MemberOrdersStatePanel
+            actions={
+              <>
+                <button
+                  className="orders-page__button orders-page__button--primary"
+                  onClick={() => openAuthModal("sign-in")}
+                  type="button"
+                >
+                  Sign in
+                </button>
+                <Link className="orders-page__button" to="/collection">
+                  Browse collection
+                </Link>
+              </>
+            }
+            copy="Guest browsing stays open, but order history, checkout follow-up, and reserve notices live inside your private member desk."
+            prefersReducedMotion={prefersReducedMotion}
+            title="Member access unlocks the full reserve timeline"
+          />
         </div>
       </div>
     );
@@ -1647,59 +2298,54 @@ export function OrdersPage({
       <div className="orders-page">
         <div className="orders-page__ambient" />
         <div className="orders-page__shell">
-          <section className="member-orders__hero">
-            <div>
-              <p className="orders-page__eyebrow">Reserve desk</p>
-              <h1 className="orders-page__title">
-                Your order timeline, organized like a private ledger.
-              </h1>
-              <p className="orders-page__copy">
-                Follow reservation progress, payment state, and delivery
-                movement without leaving the storefront.
-              </p>
-            </div>
-
-            <div className="member-orders__hero-rail">
-              <div className="member-orders__hero-stat">
-                <span>Orders tracked</span>
-                <strong>{loading ? "..." : orders.length}</strong>
-              </div>
-              <div className="member-orders__hero-stat">
-                <span>Latest ticket</span>
-                <strong>
-                  {latestOrder?.orderNumber ?? "Waiting for first reserve"}
-                </strong>
-              </div>
-              <div className="member-orders__hero-stat">
-                <span>Total reserved</span>
-                <strong>{formatCurrency(grossRevenue)}</strong>
-              </div>
-            </div>
-          </section>
+          <MemberOrdersHero
+            copy="Follow each reserve through confirmation, payment, and delivery from one calmer storefront ledger."
+            prefersReducedMotion={prefersReducedMotion}
+            signals={memberHeroSignals}
+            title="Your private reserve timeline"
+          />
 
           {checkoutNotice ? (
             <p className="orders-page__notice">{checkoutNotice}</p>
           ) : null}
           {error ? <p className="orders-page__error">{error}</p> : null}
 
-          <div className="member-orders__list">
-            {loading ? (
-              <div className="orders-page__empty-state">
-                Loading your recent reservations.
-              </div>
-            ) : null}
+          {loading ? (
+            <MemberOrdersSkeleton prefersReducedMotion={prefersReducedMotion} />
+          ) : null}
 
-            {!loading && orders.length === 0 ? (
-              <div className="orders-page__empty-state">
-                No orders yet. Reserve a watch from the product page to populate
-                your live order desk.
-              </div>
-            ) : null}
+          {!loading && sortedOrders.length === 0 ? (
+            <MemberOrdersStatePanel
+              actions={
+                <>
+                  <Link
+                    className="orders-page__button orders-page__button--primary"
+                    to="/collection"
+                  >
+                    Browse marketplace
+                  </Link>
+                  <Link className="orders-page__button" to="/favorites">
+                    Open favorites
+                  </Link>
+                </>
+              }
+              copy="No reserves are sitting in your ledger yet. Browse the collection or pull a saved piece from favorites when you are ready to stage the next order."
+              prefersReducedMotion={prefersReducedMotion}
+              title="Your reserve desk is empty"
+            />
+          ) : null}
 
-            {orders.map((order) => (
-              <MemberOrderCard key={order.id} order={order} />
-            ))}
-          </div>
+          {!loading && sortedOrders.length > 0 ? (
+            <div className="member-orders__list">
+              {sortedOrders.map((order) => (
+                <MemberOrderCard
+                  key={order.id}
+                  order={order}
+                  prefersReducedMotion={prefersReducedMotion}
+                />
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
     );
@@ -1823,11 +2469,6 @@ export function OrdersPage({
             <p className="orders-page__notice">{checkoutNotice}</p>
           ) : null}
           {error ? <p className="orders-page__error">{error}</p> : null}
-          {productMessage ? (
-            <p className="orders-page__notice orders-page__notice--muted">
-              {productMessage}
-            </p>
-          ) : null}
 
           {loading ? (
             <div className="orders-page__empty-state">
@@ -2318,7 +2959,7 @@ export function OrdersPage({
                         />
                       </label>
 
-                      <label
+                      <div
                         className={`operations-field ${
                           requiredFieldMessage(productForm.brandId, "Brand ID")
                             ? "operations-field--invalid"
@@ -2326,31 +2967,35 @@ export function OrdersPage({
                         }`}
                       >
                         <FieldLabel label="Brand ID" required />
-                        <input
-                          aria-invalid={Boolean(
+                        <PresetLookupField
+                          fieldLabel="Brand"
+                          invalid={Boolean(
                             requiredFieldMessage(
                               productForm.brandId,
                               "Brand ID",
                             ),
                           )}
-                          onChange={(event) =>
-                            handleProductFieldChange(
-                              "brandId",
-                              event.target.value,
-                            )
+                          onChange={(value) =>
+                            handleProductFieldChange("brandId", value)
                           }
-                          placeholder="omega"
+                          onPick={(value) =>
+                            handleProductFieldChange("brandId", value)
+                          }
+                          options={BRAND_PRESETS}
+                          placeholder="Rolex"
                           value={productForm.brandId}
                         />
                         <FieldHint
+                          fallback={brandPresetInfo.message}
+                          fallbackTone={brandPresetInfo.tone}
                           message={requiredFieldMessage(
                             productForm.brandId,
                             "Brand ID",
                           )}
                         />
-                      </label>
+                      </div>
 
-                      <label
+                      <div
                         className={`operations-field ${
                           requiredFieldMessage(
                             productForm.categoryId,
@@ -2361,29 +3006,33 @@ export function OrdersPage({
                         }`}
                       >
                         <FieldLabel label="Category ID" required />
-                        <input
-                          aria-invalid={Boolean(
+                        <PresetLookupField
+                          fieldLabel="Category"
+                          invalid={Boolean(
                             requiredFieldMessage(
                               productForm.categoryId,
                               "Category ID",
                             ),
                           )}
-                          onChange={(event) =>
-                            handleProductFieldChange(
-                              "categoryId",
-                              event.target.value,
-                            )
+                          onChange={(value) =>
+                            handleProductFieldChange("categoryId", value)
                           }
-                          placeholder="luxury-sport"
+                          onPick={(value) =>
+                            handleProductFieldChange("categoryId", value)
+                          }
+                          options={CATEGORY_PRESETS}
+                          placeholder="Luxury"
                           value={productForm.categoryId}
                         />
                         <FieldHint
+                          fallback={categoryPresetInfo.message}
+                          fallbackTone={categoryPresetInfo.tone}
                           message={requiredFieldMessage(
                             productForm.categoryId,
                             "Category ID",
                           )}
                         />
-                      </label>
+                      </div>
 
                       <label
                         className={`operations-field operations-field--full ${
@@ -2430,7 +3079,9 @@ export function OrdersPage({
                                   ? "Preparing selected images..."
                                   : productForm.images.length > 0
                                     ? `${productForm.images.length} image${
-                                        productForm.images.length === 1 ? "" : "s"
+                                        productForm.images.length === 1
+                                          ? ""
+                                          : "s"
                                       } in the gallery`
                                     : "Choose images from your computer"}
                               </strong>
@@ -2481,7 +3132,9 @@ export function OrdersPage({
                                     }`
                                   : productForm.images.length > 0
                                     ? `${productForm.images.length} image${
-                                        productForm.images.length === 1 ? "" : "s"
+                                        productForm.images.length === 1
+                                          ? ""
+                                          : "s"
                                       } currently in the gallery.`
                                     : "PNG or JPG, up to 4 MB each."}
                               </span>
@@ -2509,7 +3162,9 @@ export function OrdersPage({
                                     src={image}
                                   />
                                   <figcaption className="operations-image-picker__meta">
-                                    <span>Image {String(index + 1).padStart(2, "0")}</span>
+                                    <span>
+                                      Image {String(index + 1).padStart(2, "0")}
+                                    </span>
                                     <button
                                       className="operations-image-picker__remove"
                                       disabled={uploadingImages}
@@ -2856,9 +3511,9 @@ export function OrdersPage({
                           ? "Uploading images"
                           : isProductActionPending
                             ? "Saving"
-                          : selectedProductId
-                            ? "Save product"
-                            : "Create product"}
+                            : selectedProductId
+                              ? "Save product"
+                              : "Create product"}
                       </button>
                     </div>
                   </form>

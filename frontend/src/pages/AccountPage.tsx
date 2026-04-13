@@ -89,10 +89,6 @@ function AccountProfileForm({
   const [fullName, setFullName] = useState(user.fullName);
   const [phoneNumber, setPhoneNumber] = useState(user.phoneNumber);
   const [address, setAddress] = useState(user.address);
-  const [status, setStatus] = useState<string | null>(null);
-  const [statusTone, setStatusTone] = useState<"neutral" | "success" | "error">(
-    "neutral",
-  );
 
   const memberMark = getMemberMark(fullName, user.email);
   const { completedFields, percentage } = getProfileCompletion({
@@ -155,26 +151,14 @@ function AccountProfileForm({
   ];
 
   async function handleSubmit(): Promise<void> {
-    setStatus(null);
-    setStatusTone("neutral");
-
     try {
       await saveProfile({
         address,
         fullName,
         phoneNumber,
       });
-      setStatus(
-        "Profile updated. Your private desk details are ready for the next reserve.",
-      );
-      setStatusTone("success");
-    } catch (error) {
-      setStatus(
-        error instanceof Error
-          ? error.message
-          : "Unable to save your profile right now.",
-      );
-      setStatusTone("error");
+    } catch {
+      return;
     }
   }
 
@@ -300,14 +284,6 @@ function AccountProfileForm({
                 />
               </label>
             </div>
-
-            {status ? (
-              <p
-                className={`account-page__status account-page__status--${statusTone}`}
-              >
-                {status}
-              </p>
-            ) : null}
 
             <div className="account-page__form-actions">
               <button

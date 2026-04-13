@@ -69,7 +69,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.75rem;
+  width: 3rem;
   height: 2.75rem;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 50%;
@@ -150,7 +150,11 @@
   margin-top: 0.15rem;
   padding: 0.95rem 1.25rem;
   border-radius: var(--radius-pill);
-  background: linear-gradient(135deg, rgba(207, 168, 125, 0.24), rgba(207, 168, 125, 0.1));
+  background: linear-gradient(
+    135deg,
+    rgba(207, 168, 125, 0.24),
+    rgba(207, 168, 125, 0.1)
+  );
   color: var(--color-pearl);
   font-size: 0.7rem;
   letter-spacing: 0.3em;

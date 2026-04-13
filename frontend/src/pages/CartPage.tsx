@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
+import { useFeedback } from "../feedback/feedback-context";
 import { useStorefront } from "../storefront/storefront-context";
 import type { CartItemRecord, PaymentMethod } from "../shared";
 import "../styles/pages/cart-page.css";
@@ -100,6 +101,7 @@ function CartSkeleton() {
 }
 
 export function CartPage() {
+  const { confirm, notify } = useFeedback();
   const {
     authBusy,
     authLoading,
@@ -155,12 +157,37 @@ export function CartPage() {
     }
   }
 
-  async function handleRemove(itemId: string): Promise<void> {
-    setPendingItemId(itemId);
+  async function handleRemove(item: CartItemRecord): Promise<void> {
+    const accepted = await confirm({
+      confirmLabel: "Remove item",
+      description: `${item.productName} will be removed from your reserve cart.`,
+      title: "Remove this cart item?",
+      tone: "default",
+    });
+
+    if (!accepted) {
+      return;
+    }
+
+    setPendingItemId(item.id);
     setCheckoutError(null);
 
     try {
-      await removeCartItem(itemId);
+      await removeCartItem(item.id);
+      notify({
+        description: "The piece was removed from your reserve cart.",
+        title: `${item.productName} removed`,
+        tone: "success",
+      });
+    } catch (error) {
+      notify({
+        description:
+          error instanceof Error
+            ? error.message
+            : "Unable to update your cart right now.",
+        title: "Cart update failed",
+        tone: "error",
+      });
     } finally {
       setPendingItemId(null);
     }
@@ -431,7 +458,7 @@ export function CartPage() {
                             className="cart-page__remove"
                             disabled={isPending || checkoutPending}
                             onClick={() => {
-                              void handleRemove(item.id);
+                              void handleRemove(item);
                             }}
                             type="button"
                           >
