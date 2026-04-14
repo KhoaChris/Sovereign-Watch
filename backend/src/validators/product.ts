@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { normalizeProductSizeValue } from "../shared";
+
 const EMBEDDED_PRODUCT_IMAGE_MAX_CHARS = 180_000;
 const EMBEDDED_PRODUCT_IMAGE_TOTAL_MAX_CHARS = 600_000;
 
@@ -7,7 +9,14 @@ export const productVariantInputSchema = z.object({
   id: z.string().min(1).optional(),
   sku: z.string().min(1),
   color: z.string().min(1),
-  size: z.string().min(1),
+  size: z
+    .string()
+    .trim()
+    .min(1)
+    .refine(
+      (value) => normalizeProductSizeValue(value).length > 0,
+      "Size must be a numeric millimeter value.",
+    ),
   price: z.number().nonnegative(),
   discountPrice: z.number().nonnegative().nullable().default(null),
   stockQuantity: z.number().int().nonnegative(),

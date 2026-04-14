@@ -1,19 +1,31 @@
-import { useState } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   ArrowRight,
+  Camera,
   Heart,
   LoaderCircle,
   LogOut,
   Package,
+  RotateCcw,
   ShieldCheck,
   ShoppingBag,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
+import { useFeedback } from "../feedback/feedback-context";
 import { useStorefront } from "../storefront/storefront-context";
 import type { AuthUserProfile } from "../shared";
 import "../styles/pages/account-page.css";
+
+const AVATAR_ACCEPTED_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+]);
+const MAX_AVATAR_FILE_SIZE = 4 * 1024 * 1024;
+const AVATAR_OUTPUT_SIZE = 320;
 
 function formatMemberSince(value: string): string {
   return new Date(value).toLocaleDateString("en-US", {
@@ -34,6 +46,59 @@ function getMemberMark(fullName?: string, email?: string): string {
   }
 
   return segments.map((segment) => segment.charAt(0).toUpperCase()).join("");
+}
+
+function readFileAsImage(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Unable to read the selected image."));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () =>
+        reject(new Error("The selected image could not be prepared."));
+      image.onload = () => resolve(image);
+      image.src = String(reader.result ?? "");
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function prepareAvatarDataUrl(file: File): Promise<string> {
+  if (!AVATAR_ACCEPTED_MIME_TYPES.has(file.type)) {
+    throw new Error("Choose a PNG, JPG, or WEBP image for the profile avatar.");
+  }
+
+  if (file.size > MAX_AVATAR_FILE_SIZE) {
+    throw new Error("Profile images should stay under 4 MB.");
+  }
+
+  const image = await readFileAsImage(file);
+  const cropSize = Math.min(image.width, image.height);
+  const sourceX = (image.width - cropSize) / 2;
+  const sourceY = (image.height - cropSize) / 2;
+  const canvas = document.createElement("canvas");
+  canvas.width = AVATAR_OUTPUT_SIZE;
+  canvas.height = AVATAR_OUTPUT_SIZE;
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    throw new Error("Profile image processing is unavailable right now.");
+  }
+
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(
+    image,
+    sourceX,
+    sourceY,
+    cropSize,
+    cropSize,
+    0,
+    0,
+    canvas.width,
+    canvas.height,
+  );
+
+  return canvas.toDataURL("image/webp", 0.9);
 }
 
 function getProfileCompletion(fields: {
@@ -85,10 +150,14 @@ function AccountProfileForm({
   user: AuthUserProfile;
 }) {
   const prefersReducedMotion = useReducedMotion() ?? false;
+  const { notify } = useFeedback();
   const { authBusy, saveProfile } = useStorefront();
   const [fullName, setFullName] = useState(user.fullName);
   const [phoneNumber, setPhoneNumber] = useState(user.phoneNumber);
   const [address, setAddress] = useState(user.address);
+  const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const memberMark = getMemberMark(fullName, user.email);
   const { completedFields, percentage } = getProfileCompletion({
@@ -148,11 +217,16 @@ function AccountProfileForm({
       label: "Email",
       value: user.email,
     },
+    {
+      label: "Avatar",
+      value: avatarUrl ? "Custom" : "Monogram",
+    },
   ];
 
   async function handleSubmit(): Promise<void> {
     try {
       await saveProfile({
+        avatarUrl,
         address,
         fullName,
         phoneNumber,
@@ -160,6 +234,49 @@ function AccountProfileForm({
     } catch {
       return;
     }
+  }
+
+  async function handleAvatarSelection(
+    event: ChangeEvent<HTMLInputElement>,
+  ): Promise<void> {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    setAvatarBusy(true);
+
+    try {
+      const nextAvatarUrl = await prepareAvatarDataUrl(file);
+      setAvatarUrl(nextAvatarUrl);
+      notify({
+        title: "Avatar ready",
+        description: "Your new profile image is staged. Save the profile to publish it.",
+        tone: "success",
+      });
+    } catch (error) {
+      notify({
+        title: "Avatar could not be prepared",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Choose another image and try again.",
+        tone: "error",
+      });
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
+
+  function handleRemoveAvatar(): void {
+    setAvatarUrl("");
+    notify({
+      title: "Avatar removed",
+      description: "Save the profile to switch back to your monogram.",
+      tone: "info",
+    });
   }
 
   return (
@@ -258,6 +375,72 @@ function AccountProfileForm({
             }}
           >
             <div className="account-page__form-grid">
+              <div className="account-page__field account-page__field--wide">
+                <span>Profile image</span>
+                <div className="account-page__avatar-field">
+                  <div className="account-page__avatar-preview">
+                    {avatarUrl ? (
+                      <img
+                        alt={`${fullName.trim() || "Member"} avatar preview`}
+                        className="account-page__avatar-image"
+                        src={avatarUrl}
+                      />
+                    ) : (
+                      <span className="account-page__avatar-mark">{memberMark}</span>
+                    )}
+                  </div>
+
+                  <div className="account-page__avatar-copy">
+                    <strong>
+                      {avatarBusy
+                        ? "Preparing image"
+                        : avatarUrl
+                          ? "Avatar ready to publish"
+                          : "Add a profile image"}
+                    </strong>
+                    <p>
+                      Upload a square-friendly PNG, JPG, or WEBP image. We crop
+                      and optimize it automatically for your member desk.
+                    </p>
+                    <div className="account-page__avatar-actions">
+                      <button
+                        className="account-page__button account-page__button--primary"
+                        disabled={avatarBusy}
+                        onClick={() => fileInputRef.current?.click()}
+                        type="button"
+                      >
+                        {avatarBusy ? (
+                          <LoaderCircle className="account-page__button-icon account-page__button-icon--spinning" />
+                        ) : (
+                          <Camera className="account-page__button-icon" />
+                        )}
+                        {avatarUrl ? "Change avatar" : "Choose avatar"}
+                      </button>
+
+                      {avatarUrl ? (
+                        <button
+                          className="account-page__button"
+                          onClick={handleRemoveAvatar}
+                          type="button"
+                        >
+                          <RotateCcw className="account-page__button-icon" />
+                          Use monogram
+                        </button>
+                      ) : null}
+                    </div>
+                    <input
+                      accept="image/png,image/jpeg,image/jpg,image/webp"
+                      className="account-page__avatar-input"
+                      onChange={(event) => {
+                        void handleAvatarSelection(event);
+                      }}
+                      ref={fileInputRef}
+                      type="file"
+                    />
+                  </div>
+                </div>
+              </div>
+
               <label className="account-page__field">
                 <span>Full name</span>
                 <input
@@ -316,7 +499,15 @@ function AccountProfileForm({
           >
             <div className="account-page__summary-top">
               <div className="account-page__summary-mark" aria-hidden="true">
-                {memberMark}
+                {avatarUrl ? (
+                  <img
+                    alt=""
+                    className="account-page__summary-avatar-image"
+                    src={avatarUrl}
+                  />
+                ) : (
+                  memberMark
+                )}
               </div>
               <div>
                 <p className="account-page__section-label">

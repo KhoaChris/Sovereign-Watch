@@ -19,9 +19,9 @@ import { setApiAuthToken, storefrontApi } from "../services/api";
 import type {
   AuthUserProfile,
   CartRecord,
-  CheckoutCartPayload,
   CheckoutCartResponse,
   FavoriteRecord,
+  FinalizeCheckoutPayload,
   SyncAuthSessionPayload,
   UpdateUserProfilePayload,
   UserRole,
@@ -79,7 +79,7 @@ interface StorefrontContextValue {
   authMode: AuthMode;
   cart: CartRecord | null;
   cartCount: number;
-  checkoutCart: (payload: CheckoutCartPayload) => Promise<CheckoutCartResponse>;
+  checkoutCart: (payload: FinalizeCheckoutPayload) => Promise<CheckoutCartResponse>;
   closeAuthModal: () => void;
   commerceLoading: boolean;
   favorites: FavoriteRecord | null;
@@ -881,28 +881,30 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
   };
 
   const checkoutCart = async (
-    payload: CheckoutCartPayload,
+    payload: FinalizeCheckoutPayload,
   ): Promise<CheckoutCartResponse> => {
     await ensureAuthenticated();
     dispatch({ type: "auth/request" });
 
     try {
-      const normalizedShippingAddress = payload.shippingAddress.trim();
-      const result = await storefrontApi.checkoutCart({
+      const normalizedShippingAddress = payload.details.shippingAddress.trim();
+      const result = await storefrontApi.finalizeCheckout({
         ...payload,
-        shippingAddress: normalizedShippingAddress,
+        details: {
+          ...payload.details,
+          deliveryNotes: payload.details.deliveryNotes?.trim() ?? "",
+          shippingAddress: normalizedShippingAddress,
+        },
       });
 
       dispatch({ type: "cart/update", cart: result.cart });
 
-      if (
-        state.user &&
-        normalizedShippingAddress &&
-        normalizedShippingAddress !== state.user.address.trim()
-      ) {
+      if (state.user && payload.details.saveToAccount) {
         try {
           const session = await storefrontApi.updateProfile({
             address: normalizedShippingAddress,
+            fullName: payload.details.fullName.trim(),
+            phoneNumber: payload.details.phoneNumber.trim(),
           });
           persistUser(session.user);
           dispatch({ type: "profile/update_success", user: session.user });

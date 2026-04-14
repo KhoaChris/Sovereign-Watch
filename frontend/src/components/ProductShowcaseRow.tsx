@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { ArrowUpRight } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import type { ProductRecord } from "../shared";
+import { formatProductSize, type ProductRecord } from "../shared";
 import "../styles/components/product-showcase-row.css";
 
 function startingPrice(product: ProductRecord): number {
@@ -58,7 +58,7 @@ export function ProductShowcaseRow({
         <div className="product-showcase-row__overlay" />
         <div className="product-showcase-row__caption">
           <span>{leadVariant?.sku ?? product.id}</span>
-          <span>{leadVariant?.size ?? "Collector spec"}</span>
+          <span>{formatProductSize(leadVariant?.size, "Collector spec")}</span>
         </div>
       </Link>
 
@@ -85,7 +85,9 @@ export function ProductShowcaseRow({
           </div>
           <div className="product-showcase-row__spec">
             <span className="product-showcase-row__spec-label">Diameter</span>
-            <span className="product-showcase-row__spec-value">{leadVariant?.size ?? "42mm"}</span>
+            <span className="product-showcase-row__spec-value">
+              {formatProductSize(leadVariant?.size, "42mm")}
+            </span>
           </div>
           <div className="product-showcase-row__spec">
             <span className="product-showcase-row__spec-label">Inventory</span>

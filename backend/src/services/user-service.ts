@@ -54,6 +54,12 @@ function buildProfile(
   token: DecodedIdToken,
   payload: SyncAuthSessionPayload | UpdateUserProfilePayload,
 ): Omit<AuthUserProfile, "createdAt" | "updatedAt"> {
+  const avatarUrl =
+    payload.avatarUrl === null
+      ? ""
+      : typeof payload.avatarUrl === "string"
+        ? payload.avatarUrl.trim()
+        : undefined;
   const fullName = payload.fullName?.trim();
   const phoneNumber = payload.phoneNumber?.trim();
   const address = payload.address?.trim();
@@ -63,6 +69,7 @@ function buildProfile(
     firebaseUid: token.uid,
     email: token.email ?? existing?.email ?? "",
     fullName: fullName || existing?.fullName || fallbackFullName(token.email, token.name),
+    avatarUrl: avatarUrl ?? existing?.avatarUrl ?? "",
     phoneNumber: phoneNumber ?? existing?.phoneNumber ?? "",
     address: address ?? existing?.address ?? "",
     role: normalizeRole(existing?.role, token.email ?? existing?.email),
@@ -78,6 +85,7 @@ function hasProfileChanges(
     existing.firebaseUid !== nextProfile.firebaseUid ||
     existing.email !== nextProfile.email ||
     existing.fullName !== nextProfile.fullName ||
+    existing.avatarUrl !== nextProfile.avatarUrl ||
     existing.phoneNumber !== nextProfile.phoneNumber ||
     existing.address !== nextProfile.address ||
     existing.role !== nextProfile.role
@@ -91,7 +99,12 @@ export async function getUserProfile(userId: string): Promise<AuthUserProfile | 
     return null;
   }
 
-  return snapshot.data() as AuthUserProfile;
+  const profile = snapshot.data() as AuthUserProfile;
+
+  return {
+    ...profile,
+    avatarUrl: profile.avatarUrl ?? "",
+  };
 }
 
 export async function syncAuthenticatedUser(

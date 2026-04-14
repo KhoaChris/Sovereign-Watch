@@ -26,6 +26,7 @@ import {
   Search,
   ShieldCheck,
   ShoppingBag,
+  Star,
   Trash2,
   Truck,
 } from "lucide-react";
@@ -34,22 +35,28 @@ import { Link, useLocation } from "react-router-dom";
 import { useFeedback } from "../feedback/feedback-context";
 import { storefrontApi } from "../services/api";
 import { useStorefront } from "../storefront/storefront-context";
-import type {
-  CreateProductPayload,
-  OrderRecord,
-  OrderStatus,
-  PaymentMethod,
-  PaymentStatus,
-  ProductRecord,
-  ProductVariantInput,
-  ProductVariant,
-  ShippingStatus,
-  UpdateOrderPayload,
+import {
+  formatProductSize,
+  normalizeProductSizeValue,
+  sanitizeProductSizeDraft,
+  type CreateProductPayload,
+  type OrderRecord,
+  type OrderStatus,
+  type PaymentMethod,
+  type PaymentStatus,
+  type ReviewRecord,
+  type AdminReviewSortOption,
+  type ProductRecord,
+  type ProductVariantInput,
+  type ProductVariant,
+  type ShippingStatus,
+  type UpdateOrderPayload,
 } from "../shared";
 import "../styles/pages/orders-page.css";
 
 interface OrdersLocationState {
   cartCheckoutMessage?: string;
+  highlightedOrderId?: string;
 }
 
 interface ProductVariantDraft {
@@ -567,11 +574,26 @@ const ADMIN_SECTIONS = [
     label: "Products",
   },
   {
+    description: "Ratings, comments, and moderation queue.",
+    href: "#operations-reviews",
+    icon: PencilLine,
+    label: "Reviews",
+  },
+  {
     description: "Print-ready sales report and CSV export.",
     href: "#operations-export",
     icon: Download,
     label: "Exports",
   },
+];
+
+const ADMIN_REVIEW_SORT_OPTIONS: Array<{
+  label: string;
+  value: AdminReviewSortOption;
+}> = [
+  { label: "Newest first", value: "newest" },
+  { label: "Lowest rating", value: "rating-asc" },
+  { label: "Highest rating", value: "rating-desc" },
 ];
 
 function createEmptyVariantDraft(): ProductVariantDraft {
@@ -689,6 +711,18 @@ function numericFieldMessage(
   return null;
 }
 
+function sizeFieldMessage(value: string): string | null {
+  if (value.trim().length === 0) {
+    return "Size is required.";
+  }
+
+  if (!normalizeProductSizeValue(value)) {
+    return "Size must be entered as a numeric millimeter value.";
+  }
+
+  return null;
+}
+
 function descriptionFieldMessage(value: string): string | null {
   if (value.trim().length === 0) {
     return "Description is required.";
@@ -756,7 +790,7 @@ function createProductForm(product: ProductRecord): ProductFormState {
         variant.discountPrice === null ? "" : String(variant.discountPrice),
       id: variant.id,
       price: String(variant.price),
-      size: variant.size,
+      size: normalizeProductSizeValue(variant.size),
       sku: variant.sku,
       stockQuantity: String(variant.stockQuantity),
     })),
@@ -774,13 +808,16 @@ function parseVariants(
     const discountPriceValue = variant.discountPrice.trim();
     const discountPrice =
       discountPriceValue.length > 0 ? Number(discountPriceValue) : null;
+    const normalizedSize = normalizeProductSizeValue(variant.size);
 
     if (!variant.color.trim()) {
       throw new Error(`Variant ${index + 1}: color is required.`);
     }
 
-    if (!variant.size.trim()) {
-      throw new Error(`Variant ${index + 1}: size is required.`);
+    if (!normalizedSize) {
+      throw new Error(
+        `Variant ${index + 1}: size must be a numeric millimeter value.`,
+      );
     }
 
     if (!Number.isFinite(price) || price < 0) {
@@ -809,7 +846,7 @@ function parseVariants(
       discountPrice,
       id: variant.id,
       price,
-      size: variant.size.trim(),
+      size: normalizedSize,
       sku: variant.sku.trim() || generatedSku,
       stockQuantity,
     };
@@ -1068,15 +1105,18 @@ function downloadCsv(filename: string, csv: string): void {
   window.URL.revokeObjectURL(objectUrl);
 }
 
-async function fetchOperationsData(
-  includeProducts: boolean,
-): Promise<{ orders: OrderRecord[]; products: ProductRecord[] }> {
-  const [orders, products] = await Promise.all([
+async function fetchOperationsData(includeProducts: boolean): Promise<{
+  orders: OrderRecord[];
+  products: ProductRecord[];
+  reviews: ReviewRecord[];
+}> {
+  const [orders, products, reviews] = await Promise.all([
     storefrontApi.getOrders(),
     includeProducts ? storefrontApi.getProducts() : Promise.resolve([]),
+    includeProducts ? storefrontApi.getAdminReviews() : Promise.resolve([]),
   ]);
 
-  return { orders, products };
+  return { orders, products, reviews };
 }
 
 function resolveMetricTone(
@@ -1199,6 +1239,23 @@ function DistributionMeter({ segments }: { segments: DonutSegment[] }) {
   );
 }
 
+function ReviewStarsRow({ rating }: { rating: number }) {
+  return (
+    <div className="operations-review-stars" aria-label={`${rating} out of 5`}>
+      {[1, 2, 3, 4, 5].map((value) => (
+        <span
+          key={value}
+          className={`operations-review-stars__star ${
+            value <= rating ? "operations-review-stars__star--active" : ""
+          }`}
+        >
+          <Star fill="currentColor" size={14} strokeWidth={1.8} />
+        </span>
+      ))}
+    </div>
+  );
+}
+
 type MemberOrderStageTone = "active" | "complete" | "issue" | "waiting";
 
 interface MemberOrderStage {
@@ -1238,7 +1295,10 @@ function normalizeMemberMeta(
 
   const normalizedValue = trimmedValue.toLowerCase();
 
-  if (normalizedValue === "pending" || normalizedValue === "pending assignment") {
+  if (
+    normalizedValue === "pending" ||
+    normalizedValue === "pending assignment"
+  ) {
     return fallback;
   }
 
@@ -1287,7 +1347,9 @@ function buildMemberOrderStages(order: OrderRecord): MemberOrderStage[] {
               label: "Payment",
               tone: "active",
             }
-          : ["confirmed", "paid", "processing", "shipped"].includes(order.status)
+          : ["confirmed", "paid", "processing", "shipped"].includes(
+                order.status,
+              )
             ? {
                 detail: "Queued",
                 label: "Payment",
@@ -1303,9 +1365,7 @@ function buildMemberOrderStages(order: OrderRecord): MemberOrderStage[] {
     order.status === "cancelled" || shippingStatus === "returned"
       ? {
           detail:
-            shippingStatus === "returned"
-              ? "Returned"
-              : "Delivery halted",
+            shippingStatus === "returned" ? "Returned" : "Delivery halted",
           label: "Delivery",
           tone: "issue",
         }
@@ -1451,9 +1511,11 @@ function MemberOrdersSkeleton({
 }
 
 function MemberOrderCard({
+  highlighted = false,
   order,
   prefersReducedMotion,
 }: {
+  highlighted?: boolean;
   order: OrderRecord;
   prefersReducedMotion: boolean;
 }) {
@@ -1480,7 +1542,9 @@ function MemberOrderCard({
 
   return (
     <motion.article
-      className="member-orders__card"
+      className={`member-orders__card${
+        highlighted ? " member-orders__card--highlighted" : ""
+      }`}
       {...getRevealProps(prefersReducedMotion)}
     >
       <div className="member-orders__card-head">
@@ -1563,6 +1627,7 @@ export function OrdersPage({
     useStorefront();
   const [orders, setOrders] = useState<OrderRecord[]>(fallbackOrders);
   const [products, setProducts] = useState<ProductRecord[]>([]);
+  const [reviews, setReviews] = useState<ReviewRecord[]>([]);
   const [drafts, setDrafts] = useState<Record<string, UpdateOrderPayload>>({});
   const [productForm, setProductForm] = useState<ProductFormState>(
     createEmptyProductForm(),
@@ -1581,11 +1646,17 @@ export function OrdersPage({
   const [uploadingImages, setUploadingImages] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [productSearch, setProductSearch] = useState("");
+  const [reviewSearch, setReviewSearch] = useState("");
+  const [reviewSort, setReviewSort] = useState<AdminReviewSortOption>("newest");
+  const [pendingReviewId, setPendingReviewId] = useState<string | null>(null);
   const deferredProductSearch = useDeferredValue(productSearch);
+  const deferredReviewSearch = useDeferredValue(reviewSearch);
   const [error, setError] = useState<string | null>(null);
 
   const checkoutNotice =
     (location.state as OrdersLocationState | null)?.cartCheckoutMessage ?? null;
+  const highlightedOrderId =
+    (location.state as OrdersLocationState | null)?.highlightedOrderId ?? null;
 
   useEffect(() => {
     let active = true;
@@ -1593,6 +1664,7 @@ export function OrdersPage({
     if (!isAuthenticated) {
       setOrders([]);
       setProducts([]);
+      setReviews([]);
       setLoading(false);
       setError(null);
       return () => {
@@ -1611,6 +1683,7 @@ export function OrdersPage({
 
         setOrders(result.orders);
         setProducts(sortProductsForAdmin(result.products));
+        setReviews(result.reviews);
         setLoading(false);
       })
       .catch((err: unknown) => {
@@ -1694,7 +1767,12 @@ export function OrdersPage({
 
     return products.filter((product) => {
       const variantSearch = product.variants
-        .map((variant) => `${variant.sku} ${variant.color} ${variant.size}`)
+        .map(
+          (variant) =>
+            `${variant.sku} ${variant.color} ${variant.size} ${formatProductSize(
+              variant.size,
+            )}`,
+        )
         .join(" ")
         .toLowerCase();
       const haystack = [
@@ -1711,6 +1789,31 @@ export function OrdersPage({
       return haystack.includes(query);
     });
   }, [deferredProductSearch, products]);
+
+  const filteredReviews = useMemo(() => {
+    const query = deferredReviewSearch.trim().toLowerCase();
+    const filtered = query
+      ? reviews.filter((review) => {
+          const haystack = [
+            review.authorName,
+            review.comment,
+            review.productName ?? "",
+          ]
+            .join(" ")
+            .toLowerCase();
+          return haystack.includes(query);
+        })
+      : reviews;
+
+    return [...filtered].sort((a, b) => {
+      if (reviewSort === "rating-asc") return a.rating - b.rating;
+      if (reviewSort === "rating-desc") return b.rating - a.rating;
+      return (
+        new Date(b.updatedAt || b.createdAt).getTime() -
+        new Date(a.updatedAt || a.createdAt).getTime()
+      );
+    });
+  }, [deferredReviewSearch, reviewSort, reviews]);
   const brandPresetInfo = presetFieldFallback(
     BRAND_PRESETS,
     productForm.brandId,
@@ -1856,6 +1959,7 @@ export function OrdersPage({
       const result = await fetchOperationsData(isAdmin);
       setOrders(result.orders);
       setProducts(sortProductsForAdmin(result.products));
+      setReviews(result.reviews);
       notify({
         description: "Orders and catalog data were synced again.",
         title: "Dashboard refreshed",
@@ -1872,6 +1976,31 @@ export function OrdersPage({
       });
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function handleDeleteReview(reviewId: string): Promise<void> {
+    setPendingReviewId(reviewId);
+
+    try {
+      await storefrontApi.deleteReview(reviewId);
+      setReviews((current) => current.filter((r) => r.id !== reviewId));
+      notify({
+        description: "The review has been removed from the public catalog.",
+        title: "Review deleted",
+        tone: "success",
+      });
+    } catch (err) {
+      notify({
+        description:
+          err instanceof Error
+            ? err.message
+            : "Unable to delete this review right now.",
+        title: "Delete failed",
+        tone: "error",
+      });
+    } finally {
+      setPendingReviewId(null);
     }
   }
 
@@ -2047,7 +2176,7 @@ export function OrdersPage({
 
         return {
           ...variant,
-          [key]: value,
+          [key]: key === "size" ? sanitizeProductSizeDraft(value) : value,
         };
       }),
     }));
@@ -2340,6 +2469,7 @@ export function OrdersPage({
               {sortedOrders.map((order) => (
                 <MemberOrderCard
                   key={order.id}
+                  highlighted={order.id === highlightedOrderId}
                   order={order}
                   prefersReducedMotion={prefersReducedMotion}
                 />
@@ -3236,10 +3366,7 @@ export function OrdersPage({
                             variant.color,
                             "Color",
                           );
-                          const sizeMessage = requiredFieldMessage(
-                            variant.size,
-                            "Size",
-                          );
+                          const sizeMessage = sizeFieldMessage(variant.size);
                           const priceMessage = numericFieldMessage(
                             variant.price,
                             "Price",
@@ -3281,7 +3408,10 @@ export function OrdersPage({
                           const variantTitle =
                             variant.sku.trim() || generatedSku;
                           const variantSummary = identityComplete
-                            ? [variant.color.trim(), variant.size.trim()]
+                            ? [
+                                variant.color.trim(),
+                                formatProductSize(variant.size),
+                              ]
                                 .filter(Boolean)
                                 .join(" • ")
                             : `Required: ${missingIdentity.join(" and ")}.`;
@@ -3380,19 +3510,35 @@ export function OrdersPage({
                                       }`}
                                     >
                                       <FieldLabel label="Size" required />
-                                      <input
-                                        aria-invalid={Boolean(sizeMessage)}
-                                        onChange={(event) =>
-                                          handleVariantChange(
-                                            index,
-                                            "size",
-                                            event.target.value,
-                                          )
+                                      <div className="operations-field__input-wrap operations-field__input-wrap--suffix">
+                                        <input
+                                          aria-invalid={Boolean(sizeMessage)}
+                                          inputMode="decimal"
+                                          maxLength={6}
+                                          onChange={(event) =>
+                                            handleVariantChange(
+                                              index,
+                                              "size",
+                                              event.target.value,
+                                            )
+                                          }
+                                          placeholder="40"
+                                          value={variant.size}
+                                        />
+                                        <span className="operations-field__suffix">
+                                          mm
+                                        </span>
+                                      </div>
+                                      <FieldHint
+                                        fallback={
+                                          formatProductSize(variant.size)
+                                            ? `Displayed as ${formatProductSize(
+                                                variant.size,
+                                              )} on the storefront.`
+                                            : "Enter the real case size as a number."
                                         }
-                                        placeholder="Size"
-                                        value={variant.size}
+                                        message={sizeMessage}
                                       />
-                                      <FieldHint message={sizeMessage} />
                                     </label>
                                   </div>
                                 </div>
@@ -3518,6 +3664,131 @@ export function OrdersPage({
                     </div>
                   </form>
                 </div>
+              </section>
+
+              <section
+                className="operations-panel operations-panel--reviews"
+                id="operations-reviews"
+              >
+                <div className="operations-panel__head">
+                  <div>
+                    <p className="orders-page__eyebrow">Moderation queue</p>
+                    <h2>Ratings &amp; member comments</h2>
+                  </div>
+                  <span className="operations-panel__meta">
+                    {reviews.length} review{reviews.length === 1 ? "" : "s"} in
+                    the system
+                  </span>
+                </div>
+
+                <div className="operations-reviews-toolbar">
+                  <label className="operations-search">
+                    <Search size={16} />
+                    <input
+                      onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                        setReviewSearch(event.target.value)
+                      }
+                      placeholder="Search by author, product, or comment"
+                      value={reviewSearch}
+                    />
+                  </label>
+
+                  <div className="operations-reviews-sort">
+                    {ADMIN_REVIEW_SORT_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        className={`operations-reviews-sort__btn${
+                          reviewSort === option.value
+                            ? " operations-reviews-sort__btn--active"
+                            : ""
+                        }`}
+                        onClick={() => setReviewSort(option.value)}
+                        type="button"
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {filteredReviews.length === 0 ? (
+                  <div className="orders-page__empty-state">
+                    {reviews.length === 0
+                      ? "No reviews have been submitted yet."
+                      : "No reviews match your search."}
+                  </div>
+                ) : (
+                  <div className="operations-reviews-list">
+                    {filteredReviews.map((review) => (
+                      <motion.article
+                        key={review.id}
+                        className="operations-review-card"
+                        initial={{ opacity: 0, y: 16 }}
+                        transition={{ duration: 0.35 }}
+                        viewport={{ amount: 0.16, once: true }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                      >
+                        <div className="operations-review-card__header">
+                          <div className="operations-review-card__author">
+                            <span className="operations-review-card__avatar">
+                              {review.authorInitials}
+                            </span>
+                            <div>
+                              <strong>{review.authorName}</strong>
+                              <span>
+                                {review.productName ?? review.productId}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="operations-review-card__meta">
+                            <ReviewStarsRow rating={review.rating} />
+                            <span className="operations-review-card__date">
+                              {new Intl.DateTimeFormat("en-US", {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                              }).format(
+                                new Date(
+                                  review.updatedAt || review.createdAt,
+                                ),
+                              )}
+                            </span>
+                          </div>
+                        </div>
+
+                        {review.comment.trim().length > 0 ? (
+                          <p className="operations-review-card__comment">
+                            {review.comment}
+                          </p>
+                        ) : (
+                          <p className="operations-review-card__comment operations-review-card__comment--empty">
+                            No written comment — star rating only.
+                          </p>
+                        )}
+
+                        <div className="operations-review-card__footer">
+                          <span className="operations-review-card__id">
+                            ID: {review.id}
+                          </span>
+                          <button
+                            className="operations-review-card__delete"
+                            disabled={pendingReviewId === review.id}
+                            onClick={() => {
+                              void handleDeleteReview(review.id);
+                            }}
+                            type="button"
+                          >
+                            <Trash2 size={14} />
+                            {pendingReviewId === review.id
+                              ? "Deleting"
+                              : "Delete"}
+                          </button>
+                        </div>
+                      </motion.article>
+                    ))}
+                  </div>
+                )}
               </section>
             </div>
           )}

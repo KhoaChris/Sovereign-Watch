@@ -180,8 +180,8 @@ export function FavoritesPage() {
               </p>
             </div>
             <p className="favorites-page__state-support">
-              Nothing is saved right now. Open the marketplace and heart a
-              piece to keep it within easy reach.
+              Nothing is saved right now. Open the marketplace and heart a piece
+              to keep it within easy reach.
             </p>
             <div className="favorites-page__actions favorites-page__state-actions">
               <Link
@@ -196,7 +196,7 @@ export function FavoritesPage() {
             </div>
           </motion.section>
         ) : (
-          <div className="favorites-page__grid">
+          <motion.section className="favorites-page__grid" {...revealProps}>
             {favoriteItems.map((item) => {
               const product = item.product;
 
@@ -270,7 +270,7 @@ export function FavoritesPage() {
                 </article>
               );
             })}
-          </div>
+          </motion.section>
         )}
       </div>
     </div>

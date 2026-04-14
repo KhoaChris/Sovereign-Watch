@@ -1,3 +1,4 @@
+import { getStripe } from "../config/stripe";
 import { getDb } from "../config/firebase";
 import type {
   AddCartItemPayload,
@@ -5,12 +6,15 @@ import type {
   CartRecord,
   CheckoutCartPayload,
   CheckoutCartResponse,
+  FinalizeCheckoutPayload,
+  PrepareCheckoutPaymentPayload,
+  PrepareCheckoutPaymentResponse,
   UpdateCartItemPayload,
 } from "../shared";
 import { nowIsoString } from "../utils/dates";
 import { createEntityId } from "../utils/ids";
 import { findVariantById } from "./product-service";
-import { createOrder } from "./order-service";
+import { createOrder, updateOrder } from "./order-service";
 
 const CARTS_COLLECTION = "carts";
 
@@ -24,6 +28,24 @@ function createEmptyCart(userId: string): CartRecord {
     items: [],
     itemCount: 0,
   };
+}
+
+function formatCheckoutShippingAddress(
+  payload: FinalizeCheckoutPayload["details"],
+): string {
+  return [
+    `${payload.fullName.trim()} · ${payload.phoneNumber.trim()}`,
+    payload.shippingAddress.trim(),
+    payload.deliveryNotes?.trim()
+      ? `Notes: ${payload.deliveryNotes.trim()}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function toStripeAmount(value: number): number {
+  return Math.round(value * 100);
 }
 
 function withCartTotals(cart: CartRecord): CartRecord {
@@ -215,5 +237,119 @@ export async function checkoutCartRecord(
   return {
     cart: clearedCart,
     order,
+  };
+}
+
+export async function prepareCheckoutPayment(
+  userId: string,
+  payload: PrepareCheckoutPaymentPayload,
+): Promise<PrepareCheckoutPaymentResponse> {
+  const cart = await getStoredCart(userId);
+
+  if (cart.items.length === 0) {
+    throw new Error("Your reserve cart is empty.");
+  }
+
+  const normalizedCart = withCartTotals(cart);
+  const stripe = getStripe();
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount: toStripeAmount(normalizedCart.totalAmount),
+    automatic_payment_methods: {
+      enabled: true,
+    },
+    currency: "usd",
+    metadata: {
+      cartId: normalizedCart.id,
+      cartUpdatedAt: normalizedCart.updatedAt,
+      paymentMethodPreference: payload.paymentMethod,
+      userId,
+    },
+  });
+
+  if (!paymentIntent.client_secret) {
+    throw new Error("Stripe did not return a payment secret for this checkout.");
+  }
+
+  return {
+    amount: normalizedCart.totalAmount,
+    clientSecret: paymentIntent.client_secret,
+    currency: paymentIntent.currency,
+    paymentIntentId: paymentIntent.id,
+  };
+}
+
+async function createCheckoutOrder(
+  userId: string,
+  payload: FinalizeCheckoutPayload,
+): Promise<CheckoutCartResponse> {
+  const order = await createOrder(userId, {
+    items: (await getStoredCart(userId)).items.map((item) => ({
+      productVariantId: item.productVariantId,
+      quantity: item.quantity,
+    })),
+    paymentMethod: payload.paymentMethod,
+    shippingAddress: formatCheckoutShippingAddress(payload.details),
+  });
+
+  const clearedCart = await clearCartRecord(userId);
+
+  return {
+    cart: clearedCart,
+    order,
+  };
+}
+
+function isStripePaymentMethod(
+  method: FinalizeCheckoutPayload["paymentMethod"],
+): method is "card" | "wallet" {
+  return method === "card" || method === "wallet";
+}
+
+export async function finalizeCheckout(
+  userId: string,
+  payload: FinalizeCheckoutPayload,
+): Promise<CheckoutCartResponse> {
+  const cart = await getStoredCart(userId);
+
+  if (cart.items.length === 0) {
+    throw new Error("Your reserve cart is empty.");
+  }
+
+  if (!isStripePaymentMethod(payload.paymentMethod)) {
+    return createCheckoutOrder(userId, payload);
+  }
+
+  if (!payload.paymentIntentId) {
+    throw new Error("A Stripe payment confirmation is required for this method.");
+  }
+
+  const stripe = getStripe();
+  const paymentIntent = await stripe.paymentIntents.retrieve(
+    payload.paymentIntentId,
+  );
+
+  if (
+    !("metadata" in paymentIntent) ||
+    paymentIntent.metadata.userId !== userId
+  ) {
+    throw new Error("This Stripe payment does not belong to the active account.");
+  }
+
+  if (paymentIntent.status !== "succeeded") {
+    throw new Error("Stripe has not confirmed this payment yet.");
+  }
+
+  const result = await createCheckoutOrder(userId, payload);
+  const paidOrder = await updateOrder(result.order.id, {
+    paymentStatus: "paid",
+  });
+
+  if (!paidOrder) {
+    throw new Error("The order was created, but payment sync could not finish.");
+  }
+
+  return {
+    ...result,
+    order: paidOrder,
   };
 }

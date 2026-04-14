@@ -1,12 +1,24 @@
 import { Router } from "express";
 
-import { requireAuth, requireRole } from "../middleware/auth";
+import {
+  assertAuthProfile,
+  type AuthenticatedRequest,
+  requireAuth,
+  requireRole,
+} from "../middleware/auth";
+import {
+  deleteViewerReview,
+  getProductReviews,
+  getViewerProductReview,
+  upsertProductReview,
+} from "../services/review-service";
 import {
   createProductSchema,
   productDiscoveryQuerySchema,
   productImageUploadSchema,
   updateProductSchema,
 } from "../validators/product";
+import { upsertReviewSchema } from "../validators/review";
 import {
   createProduct,
   deleteProduct,
@@ -63,6 +75,103 @@ productsRouter.post("/uploads", requireAuth, requireRole("admin"), async (reques
     next(error);
   }
 });
+
+productsRouter.get("/:id/reviews", async (request, response, next) => {
+  try {
+    const productId = Array.isArray(request.params.id)
+      ? request.params.id[0]
+      : request.params.id;
+    const reviews = await getProductReviews(productId);
+
+    if (!reviews) {
+      response.status(404).json({ success: false, error: "Product not found." });
+      return;
+    }
+
+    response.json({ success: true, data: reviews });
+  } catch (error) {
+    next(error);
+  }
+});
+
+productsRouter.get(
+  "/:id/reviews/me",
+  requireAuth,
+  requireRole("user"),
+  async (request, response, next) => {
+    try {
+      const productId = Array.isArray(request.params.id)
+        ? request.params.id[0]
+        : request.params.id;
+      const profile = assertAuthProfile(request as AuthenticatedRequest);
+      const review = await getViewerProductReview(productId, profile.id);
+
+      if (!(await getProductById(productId))) {
+        response.status(404).json({ success: false, error: "Product not found." });
+        return;
+      }
+
+      response.json({ success: true, data: review });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+productsRouter.put(
+  "/:id/reviews/me",
+  requireAuth,
+  requireRole("user"),
+  async (request, response, next) => {
+    try {
+      const productId = Array.isArray(request.params.id)
+        ? request.params.id[0]
+        : request.params.id;
+      const payload = upsertReviewSchema.parse(request.body);
+      const profile = assertAuthProfile(request as AuthenticatedRequest);
+      const review = await upsertProductReview(productId, profile, payload);
+
+      if (!review) {
+        response.status(404).json({ success: false, error: "Product not found." });
+        return;
+      }
+
+      response.json({ success: true, data: review });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+productsRouter.delete(
+  "/:id/reviews/me",
+  requireAuth,
+  requireRole("user"),
+  async (request, response, next) => {
+    try {
+      const productId = Array.isArray(request.params.id)
+        ? request.params.id[0]
+        : request.params.id;
+      const profile = assertAuthProfile(request as AuthenticatedRequest);
+
+      if (!(await getProductById(productId))) {
+        response.status(404).json({ success: false, error: "Product not found." });
+        return;
+      }
+
+      const removed = await deleteViewerReview(productId, profile.id);
+
+      if (!removed) {
+        response.status(404).json({ success: false, error: "Review not found." });
+        return;
+      }
+
+      response.json({ success: true, data: { productId } });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 productsRouter.get("/:id", async (request, response, next) => {
   try {

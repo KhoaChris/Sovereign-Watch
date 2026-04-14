@@ -7,14 +7,22 @@ import type {
   CartRecord,
   CheckoutCartPayload,
   CheckoutCartResponse,
+  FinalizeCheckoutPayload,
+  PrepareCheckoutPaymentPayload,
+  PrepareCheckoutPaymentResponse,
   CreateProductPayload,
   CreateOrderPayload,
   FavoriteRecord,
   OrderRecord,
+  ProductReviewsResponse,
   ProductDiscoveryQuery,
   ProductDiscoveryResponse,
   ProductRecord,
+  PublicReviewRecord,
+  ReviewAdminQuery,
+  ReviewRecord,
   SyncAuthSessionPayload,
+  UpsertReviewPayload,
   UpdateCartItemPayload,
   UpdateOrderPayload,
   UpdateProductPayload,
@@ -66,6 +74,29 @@ export const storefrontApi = {
   async getProduct(productId: string): Promise<ProductRecord> {
     return unwrapResponse(api.get<ApiResponse<ProductRecord>>(`/products/${productId}`));
   },
+  async getProductReviews(productId: string): Promise<ProductReviewsResponse> {
+    return unwrapResponse(
+      api.get<ApiResponse<ProductReviewsResponse>>(`/products/${productId}/reviews`),
+    );
+  },
+  async getMyProductReview(productId: string): Promise<PublicReviewRecord | null> {
+    return unwrapResponse(
+      api.get<ApiResponse<PublicReviewRecord | null>>(`/products/${productId}/reviews/me`),
+    );
+  },
+  async upsertMyProductReview(
+    productId: string,
+    payload: UpsertReviewPayload,
+  ): Promise<PublicReviewRecord> {
+    return unwrapResponse(
+      api.put<ApiResponse<PublicReviewRecord>>(`/products/${productId}/reviews/me`, payload),
+    );
+  },
+  async deleteMyProductReview(productId: string): Promise<{ productId: string }> {
+    return unwrapResponse(
+      api.delete<ApiResponse<{ productId: string }>>(`/products/${productId}/reviews/me`),
+    );
+  },
   async createProduct(payload: CreateProductPayload): Promise<ProductRecord> {
     return unwrapResponse(api.post<ApiResponse<ProductRecord>>("/products", payload));
   },
@@ -83,6 +114,16 @@ export const storefrontApi = {
   },
   async deleteProduct(productId: string): Promise<{ id: string }> {
     return unwrapResponse(api.delete<ApiResponse<{ id: string }>>(`/products/${productId}`));
+  },
+  async getAdminReviews(query: ReviewAdminQuery = {}): Promise<ReviewRecord[]> {
+    return unwrapResponse(
+      api.get<ApiResponse<ReviewRecord[]>>("/reviews", {
+        params: query,
+      }),
+    );
+  },
+  async deleteReview(reviewId: string): Promise<{ id: string }> {
+    return unwrapResponse(api.delete<ApiResponse<{ id: string }>>(`/reviews/${reviewId}`));
   },
   async getOrders(): Promise<OrderRecord[]> {
     return unwrapResponse(api.get<ApiResponse<OrderRecord[]>>("/orders"));
@@ -125,5 +166,22 @@ export const storefrontApi = {
   },
   async checkoutCart(payload: CheckoutCartPayload): Promise<CheckoutCartResponse> {
     return unwrapResponse(api.post<ApiResponse<CheckoutCartResponse>>("/cart/checkout", payload));
+  },
+  async prepareCheckoutPayment(
+    payload: PrepareCheckoutPaymentPayload,
+  ): Promise<PrepareCheckoutPaymentResponse> {
+    return unwrapResponse(
+      api.post<ApiResponse<PrepareCheckoutPaymentResponse>>(
+        "/cart/checkout/prepare",
+        payload,
+      ),
+    );
+  },
+  async finalizeCheckout(
+    payload: FinalizeCheckoutPayload,
+  ): Promise<CheckoutCartResponse> {
+    return unwrapResponse(
+      api.post<ApiResponse<CheckoutCartResponse>>("/cart/checkout/finalize", payload),
+    );
   },
 };

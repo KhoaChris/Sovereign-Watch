@@ -12,6 +12,7 @@ const envSchema = z.object({
   FIREBASE_CLIENT_EMAIL: z.string().default(""),
   FIREBASE_PRIVATE_KEY: z.string().default(""),
   FIREBASE_STORAGE_BUCKET: z.string().default(""),
+  STRIPE_SECRET_KEY: z.string().default(""),
 });
 
 export const env = envSchema.parse({
@@ -23,4 +24,5 @@ export const env = envSchema.parse({
   FIREBASE_CLIENT_EMAIL: process.env.FIREBASE_CLIENT_EMAIL,
   FIREBASE_PRIVATE_KEY: process.env.FIREBASE_PRIVATE_KEY,
   FIREBASE_STORAGE_BUCKET: process.env.FIREBASE_STORAGE_BUCKET,
+  STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
 });

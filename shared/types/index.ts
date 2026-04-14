@@ -19,6 +19,8 @@ export type PaymentMethod =
   | "cash_on_delivery"
   | "wallet";
 
+export type StripeCheckoutPaymentMethod = Extract<PaymentMethod, "card" | "wallet">;
+
 export type PaymentStatus =
   | "pending"
   | "authorized"
@@ -62,6 +64,7 @@ export interface AuthUserProfile {
   firebaseUid: string;
   email: string;
   fullName: string;
+  avatarUrl: string;
   phoneNumber: string;
   address: string;
   role: UserRole;
@@ -205,7 +208,42 @@ export interface Review {
   productId: EntityId;
   rating: number;
   comment: string;
+  authorName: string;
+  authorInitials: string;
   createdAt: ISODateString;
+  updatedAt: ISODateString;
+}
+
+export interface PublicReviewRecord {
+  id: EntityId;
+  productId: EntityId;
+  rating: number;
+  comment: string;
+  authorName: string;
+  authorInitials: string;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
+}
+
+export interface ReviewRecord extends Review {
+  productName?: string;
+}
+
+export interface ProductRatingDistributionEntry {
+  count: number;
+  rating: number;
+}
+
+export interface ProductReviewSummary {
+  averageRating: number;
+  distribution: ProductRatingDistributionEntry[];
+  reviewCount: number;
+}
+
+export interface ProductReviewsResponse {
+  items: PublicReviewRecord[];
+  summary: ProductReviewSummary;
+  viewerReview: PublicReviewRecord | null;
 }
 
 export interface SalesStatistic {
@@ -325,14 +363,28 @@ export interface UpdateOrderPayload {
   courierName?: string;
 }
 
+export interface UpsertReviewPayload {
+  comment?: string;
+  rating: number;
+}
+
+export type AdminReviewSortOption = "newest" | "rating-asc" | "rating-desc";
+
+export interface ReviewAdminQuery {
+  search?: string;
+  sort?: AdminReviewSortOption;
+}
+
 export interface SyncAuthSessionPayload {
   fullName?: string;
+  avatarUrl?: string | null;
   phoneNumber?: string;
   address?: string;
 }
 
 export interface UpdateUserProfilePayload {
   fullName?: string;
+  avatarUrl?: string | null;
   phoneNumber?: string;
   address?: string;
 }
@@ -352,6 +404,32 @@ export interface UpdateCartItemPayload {
 
 export interface CheckoutCartPayload {
   shippingAddress: string;
+  paymentMethod: PaymentMethod;
+}
+
+export interface CheckoutDetailsInput {
+  fullName: string;
+  email: string;
+  phoneNumber: string;
+  shippingAddress: string;
+  deliveryNotes?: string;
+  saveToAccount?: boolean;
+}
+
+export interface PrepareCheckoutPaymentPayload {
+  paymentMethod: StripeCheckoutPaymentMethod;
+}
+
+export interface PrepareCheckoutPaymentResponse {
+  amount: number;
+  clientSecret: string;
+  currency: string;
+  paymentIntentId: string;
+}
+
+export interface FinalizeCheckoutPayload {
+  details: CheckoutDetailsInput;
+  paymentIntentId?: string;
   paymentMethod: PaymentMethod;
 }
 

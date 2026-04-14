@@ -10,7 +10,11 @@ import {
 import { ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import type { ProductRecord, ProductVariant } from "../shared";
+import {
+  formatProductSize,
+  type ProductRecord,
+  type ProductVariant,
+} from "../shared";
 import "../styles/pages/home-page.css";
 
 function useMediaQuery(query: string): boolean {
@@ -700,7 +704,7 @@ export function HomePage({
                   </div>
                   <div className="home-page__story-stat">
                     <span>Profile</span>
-                    <strong>{secondaryVariant?.size ?? "40mm"}</strong>
+                    <strong>{formatProductSize(secondaryVariant?.size, "40mm")}</strong>
                   </div>
                   <div className="home-page__story-stat">
                     <span>Access</span>

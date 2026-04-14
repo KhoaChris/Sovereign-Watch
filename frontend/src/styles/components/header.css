@@ -271,6 +271,13 @@
   text-transform: uppercase;
 }
 
+.site-header__member-avatar {
+  width: 1.75rem;
+  height: 3rem;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
 .site-header__icon-button--authed {
   border-color: rgba(207, 168, 125, 0.26);
 }

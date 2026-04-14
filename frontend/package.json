@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@react-three/fiber": "^9.5.0",
+    "@stripe/react-stripe-js": "^6.2.0",
+    "@stripe/stripe-js": "^9.2.0",
     "axios": "^1.14.0",
     "framer-motion": "^12.38.0",
     "lucide-react": "^1.7.0",

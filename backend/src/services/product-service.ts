@@ -2,6 +2,11 @@ import { randomUUID } from "node:crypto";
 
 import { getDb, getStorageBucket } from "../config/firebase";
 import { env } from "../config/env";
+import {
+  formatProductSize,
+  normalizeProductSizeValue,
+  productSizesMatch,
+} from "../shared";
 import type {
   CreateProductPayload,
   ProductAvailabilityFilter,
@@ -137,16 +142,69 @@ export async function uploadProductImage(payload: {
 }
 
 function normalizeVariant(productId: string, variant: CreateProductPayload["variants"][number]): ProductVariant {
+  const normalizedSize = normalizeProductSizeValue(variant.size);
+
   return {
     id: variant.id ?? createEntityId(),
     productId,
     sku: variant.sku,
     color: variant.color,
-    size: variant.size,
+    size: normalizedSize || variant.size.trim(),
     price: variant.price,
     discountPrice: variant.discountPrice ?? null,
     stockQuantity: variant.stockQuantity,
   };
+}
+
+function normalizePersistedProduct(product: ProductRecord): {
+  normalizedProduct: ProductRecord;
+  sizeUpdated: boolean;
+} {
+  let sizeUpdated = false;
+  const normalizedVariants = product.variants.map((variant) => {
+    const normalizedSize = normalizeProductSizeValue(variant.size);
+
+    if (!normalizedSize || normalizedSize === variant.size) {
+      return variant;
+    }
+
+    sizeUpdated = true;
+
+    return {
+      ...variant,
+      size: normalizedSize,
+    };
+  });
+
+  if (!sizeUpdated) {
+    return {
+      normalizedProduct: product,
+      sizeUpdated: false,
+    };
+  }
+
+  return {
+    normalizedProduct: {
+      ...product,
+      variants: normalizedVariants,
+    },
+    sizeUpdated: true,
+  };
+}
+
+async function syncNormalizedProductSizes(product: ProductRecord): Promise<ProductRecord> {
+  const { normalizedProduct, sizeUpdated } = normalizePersistedProduct(product);
+
+  if (!sizeUpdated) {
+    return normalizedProduct;
+  }
+
+  await getDb()
+    .collection(PRODUCTS_COLLECTION)
+    .doc(product.id)
+    .update({ variants: normalizedProduct.variants });
+
+  return normalizedProduct;
 }
 
 function formatFacetLabel(value: string): string {
@@ -201,7 +259,7 @@ function normalizeDiscoveryQuery(query: ProductDiscoveryQuery): ProductDiscovery
     priceMax: query.priceMax,
     priceMin: query.priceMin,
     search: query.search?.trim() || undefined,
-    size: query.size?.trim() || undefined,
+    size: normalizeProductSizeValue(query.size ?? "") || undefined,
     sort: query.sort ?? DEFAULT_DISCOVERY_SORT,
   };
 }
@@ -218,7 +276,10 @@ function matchesProductDiscoveryQuery(
     return false;
   }
 
-  if (query.size && !product.variants.some((variant) => variant.size === query.size)) {
+  if (
+    query.size &&
+    !product.variants.some((variant) => productSizesMatch(variant.size, query.size))
+  ) {
     return false;
   }
 
@@ -228,7 +289,12 @@ function matchesProductDiscoveryQuery(
 
   if (query.search) {
     const variantHaystack = product.variants
-      .map((variant) => `${variant.sku} ${variant.color} ${variant.size}`)
+      .map(
+        (variant) =>
+          `${variant.sku} ${variant.color} ${variant.size} ${formatProductSize(
+            variant.size,
+          )}`,
+      )
       .join(" ");
     const haystack = `${product.name} ${product.description} ${product.type} ${variantHaystack}`.toLowerCase();
 
@@ -322,14 +388,16 @@ function buildDiscoveryFacets(products: ProductRecord[]): ProductDiscoveryRespon
       minPrice = Math.min(minPrice, price);
       maxPrice = Math.max(maxPrice, price);
 
-      if (seenSizes.has(variant.size)) {
+      const normalizedSize = normalizeProductSizeValue(variant.size) || variant.size;
+
+      if (seenSizes.has(normalizedSize)) {
         continue;
       }
 
-      seenSizes.add(variant.size);
-      sizes.set(variant.size, {
-        count: (sizes.get(variant.size)?.count ?? 0) + 1,
-        label: variant.size,
+      seenSizes.add(normalizedSize);
+      sizes.set(normalizedSize, {
+        count: (sizes.get(normalizedSize)?.count ?? 0) + 1,
+        label: formatProductSize(normalizedSize, normalizedSize),
       });
     }
 
@@ -388,7 +456,11 @@ function applyFilters(products: ProductRecord[], filters: ProductFilters): Produ
 
 export async function listProducts(filters: ProductFilters): Promise<ProductRecord[]> {
   const snapshot = await getDb().collection(PRODUCTS_COLLECTION).get();
-  const products = snapshot.docs.map((document) => document.data() as ProductRecord);
+  const products = await Promise.all(
+    snapshot.docs.map((document) =>
+      syncNormalizedProductSizes(document.data() as ProductRecord),
+    ),
+  );
 
   return applyFilters(products, filters);
 }
@@ -418,7 +490,7 @@ export async function getProductById(productId: string): Promise<ProductRecord |
     return null;
   }
 
-  const product = snapshot.data() as ProductRecord;
+  const product = await syncNormalizedProductSizes(snapshot.data() as ProductRecord);
   return product.deletedAt ? null : product;
 }
 
@@ -480,6 +552,21 @@ export async function deleteProduct(productId: string): Promise<boolean> {
     return false;
   }
 
+  const relatedReviews = await getDb()
+    .collection("reviews")
+    .where("productId", "==", productId)
+    .get();
+
+  if (!relatedReviews.empty) {
+    const batch = getDb().batch();
+
+    relatedReviews.docs.forEach((document) => {
+      batch.delete(document.ref);
+    });
+
+    await batch.commit();
+  }
+
   await documentReference.delete();
 
   return true;
@@ -501,5 +588,6 @@ export async function findVariantById(
 }
 
 export async function replaceProduct(product: ProductRecord): Promise<void> {
-  await getDb().collection(PRODUCTS_COLLECTION).doc(product.id).set(product);
+  const { normalizedProduct } = normalizePersistedProduct(product);
+  await getDb().collection(PRODUCTS_COLLECTION).doc(product.id).set(normalizedProduct);
 }

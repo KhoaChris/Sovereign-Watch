@@ -3,12 +3,20 @@ import { Router } from "express";
 import { assertAuthUser, AuthenticatedRequest, requireAuth } from "../middleware/auth";
 import {
   addCartItem,
+  finalizeCheckout,
   checkoutCartRecord,
   getCartRecord,
+  prepareCheckoutPayment,
   removeCartItem,
   updateCartItemQuantity,
 } from "../services/cart-service";
-import { addCartItemSchema, checkoutCartSchema, updateCartItemSchema } from "../validators/cart";
+import {
+  addCartItemSchema,
+  checkoutCartSchema,
+  finalizeCheckoutSchema,
+  prepareCheckoutPaymentSchema,
+  updateCartItemSchema,
+} from "../validators/cart";
 
 export const cartRouter = Router();
 
@@ -60,6 +68,32 @@ cartRouter.post("/checkout", async (request, response, next) => {
   try {
     const payload = checkoutCartSchema.parse(request.body);
     const result = await checkoutCartRecord(
+      assertAuthUser(request as AuthenticatedRequest).uid,
+      payload,
+    );
+    response.status(201).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+cartRouter.post("/checkout/prepare", async (request, response, next) => {
+  try {
+    const payload = prepareCheckoutPaymentSchema.parse(request.body);
+    const result = await prepareCheckoutPayment(
+      assertAuthUser(request as AuthenticatedRequest).uid,
+      payload,
+    );
+    response.status(201).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+cartRouter.post("/checkout/finalize", async (request, response, next) => {
+  try {
+    const payload = finalizeCheckoutSchema.parse(request.body);
+    const result = await finalizeCheckout(
       assertAuthUser(request as AuthenticatedRequest).uid,
       payload,
     );

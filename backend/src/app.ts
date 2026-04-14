@@ -8,6 +8,7 @@ import { cartRouter } from "./routes/cart";
 import { favoritesRouter } from "./routes/favorites";
 import { ordersRouter } from "./routes/orders";
 import { productsRouter } from "./routes/products";
+import { reviewsRouter } from "./routes/reviews";
 
 export const app = express();
 
@@ -29,6 +30,7 @@ app.get("/api/health", (_request, response) => {
 });
 
 app.use("/api/products", productsRouter);
+app.use("/api/reviews", reviewsRouter);
 app.use("/api/orders", ordersRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/cart", cartRouter);

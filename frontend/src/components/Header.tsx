@@ -323,7 +323,15 @@ export function Header() {
                 type="button"
               >
                 {isAuthenticated ? (
-                  <span className="site-header__member-mark">{memberMark}</span>
+                  user?.avatarUrl ? (
+                    <img
+                      alt={`${user.fullName || "Member"} avatar`}
+                      className="site-header__member-avatar"
+                      src={user.avatarUrl}
+                    />
+                  ) : (
+                    <span className="site-header__member-mark">{memberMark}</span>
+                  )
                 ) : (
                   <User2 className="site-header__icon" />
                 )}

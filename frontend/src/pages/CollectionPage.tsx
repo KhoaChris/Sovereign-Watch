@@ -3,6 +3,7 @@ import {
   useDeferredValue,
   useEffect,
   useMemo,
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   useRef,
   useState,
@@ -20,13 +21,14 @@ import { ArrowUpRight, Search, SlidersHorizontal, X } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { storefrontApi } from "../services/api";
-import type {
-  ProductAvailabilityFilter,
-  ProductDiscoveryQuery,
-  ProductDiscoveryResponse,
-  ProductFacetOption,
-  ProductRecord,
-  ProductSortOption,
+import {
+  formatProductSize,
+  type ProductAvailabilityFilter,
+  type ProductDiscoveryQuery,
+  type ProductDiscoveryResponse,
+  type ProductFacetOption,
+  type ProductRecord,
+  type ProductSortOption,
 } from "../shared";
 import "../styles/pages/collection-page.css";
 
@@ -57,6 +59,253 @@ const availabilityOptions: Array<{
   { label: "Low stock", value: "limited" },
   { label: "Sold out", value: "soldout" },
 ];
+
+interface CollectionCardImagePresentation {
+  scale: number;
+  shiftX: number;
+  shiftY: number;
+}
+
+const DEFAULT_COLLECTION_CARD_IMAGE_PRESENTATION: CollectionCardImagePresentation =
+  {
+    scale: 1,
+    shiftX: 0,
+    shiftY: 0,
+  };
+
+const collectionCardImagePresentationCache = new Map<
+  string,
+  CollectionCardImagePresentation
+>();
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function fallbackCardImagePresentation(
+  image: HTMLImageElement,
+): CollectionCardImagePresentation {
+  const ratio = image.naturalWidth / image.naturalHeight;
+
+  if (ratio <= 0.56) {
+    return { scale: 1.08, shiftX: 0, shiftY: 2.5 };
+  }
+
+  if (ratio >= 0.88) {
+    return { scale: 0.94, shiftX: 0, shiftY: 1 };
+  }
+
+  return DEFAULT_COLLECTION_CARD_IMAGE_PRESENTATION;
+}
+
+function detectBackgroundColor(
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+): [number, number, number] {
+  const sampleSpan = Math.max(4, Math.round(Math.min(width, height) * 0.06));
+  const sampleOrigins = [
+    [0, 0],
+    [Math.max(0, width - sampleSpan), 0],
+    [0, Math.max(0, height - sampleSpan)],
+    [Math.max(0, width - sampleSpan), Math.max(0, height - sampleSpan)],
+  ];
+
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+  let samples = 0;
+
+  for (const [originX, originY] of sampleOrigins) {
+    for (let y = originY; y < originY + sampleSpan; y += 1) {
+      for (let x = originX; x < originX + sampleSpan; x += 1) {
+        const index = (y * width + x) * 4;
+        const alpha = pixels[index + 3] / 255;
+
+        if (alpha <= 0.02) {
+          continue;
+        }
+
+        red += pixels[index];
+        green += pixels[index + 1];
+        blue += pixels[index + 2];
+        samples += 1;
+      }
+    }
+  }
+
+  if (samples === 0) {
+    return [12, 14, 20];
+  }
+
+  return [red / samples, green / samples, blue / samples];
+}
+
+function analyzeCollectionCardImage(
+  image: HTMLImageElement,
+): CollectionCardImagePresentation {
+  const fallbackPresentation = fallbackCardImagePresentation(image);
+  const maxDimension = 320;
+  const scaleFactor = maxDimension / Math.max(image.naturalWidth, image.naturalHeight);
+  const width = Math.max(32, Math.round(image.naturalWidth * scaleFactor));
+  const height = Math.max(32, Math.round(image.naturalHeight * scaleFactor));
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+
+  if (!context) {
+    return fallbackPresentation;
+  }
+
+  canvas.width = width;
+  canvas.height = height;
+  context.clearRect(0, 0, width, height);
+  context.drawImage(image, 0, 0, width, height);
+
+  let pixels: Uint8ClampedArray;
+
+  try {
+    pixels = context.getImageData(0, 0, width, height).data;
+  } catch {
+    return fallbackPresentation;
+  }
+
+  const [backgroundRed, backgroundGreen, backgroundBlue] =
+    detectBackgroundColor(pixels, width, height);
+
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = (y * width + x) * 4;
+      const alpha = pixels[index + 3];
+
+      if (alpha <= 16) {
+        continue;
+      }
+
+      const red = pixels[index];
+      const green = pixels[index + 1];
+      const blue = pixels[index + 2];
+      const colorDistance = Math.sqrt(
+        (red - backgroundRed) ** 2 +
+          (green - backgroundGreen) ** 2 +
+          (blue - backgroundBlue) ** 2,
+      );
+      const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+      const isForeground =
+        alpha >= 64 || colorDistance >= 26 || luminance >= 46;
+
+      if (!isForeground) {
+        continue;
+      }
+
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+  }
+
+  if (maxX === -1 || maxY === -1) {
+    return fallbackPresentation;
+  }
+
+  const objectWidth = (maxX - minX + 1) / width;
+  const objectHeight = (maxY - minY + 1) / height;
+  const objectCenterX = (minX + maxX + 1) / 2 / width;
+  const objectCenterY = (minY + maxY + 1) / 2 / height;
+  const normalizedScale = clamp(
+    Math.min(0.64 / objectWidth, 0.8 / objectHeight),
+    0.9,
+    1.16,
+  );
+  const shiftX = clamp((0.5 - objectCenterX) * 18, -6, 6);
+  const shiftY = clamp((0.55 - objectCenterY) * 22, -5, 8);
+
+  return {
+    scale: Number(normalizedScale.toFixed(3)),
+    shiftX: Number(shiftX.toFixed(2)),
+    shiftY: Number(shiftY.toFixed(2)),
+  };
+}
+
+function CollectionCardImage({
+  alt,
+  src,
+}: {
+  alt: string;
+  src: string;
+}) {
+  const cachedPresentation = collectionCardImagePresentationCache.get(src);
+  const [measuredPresentation, setMeasuredPresentation] =
+    useState<CollectionCardImagePresentation>(
+      cachedPresentation ?? DEFAULT_COLLECTION_CARD_IMAGE_PRESENTATION,
+    );
+  const [measuredSrc, setMeasuredSrc] = useState(
+    cachedPresentation ? src : "",
+  );
+
+  useEffect(() => {
+    if (cachedPresentation) {
+      return;
+    }
+
+    let active = true;
+    const image = new Image();
+
+    if (!src.startsWith("data:")) {
+      image.crossOrigin = "anonymous";
+    }
+
+    image.decoding = "async";
+    image.onload = () => {
+      const nextPresentation = analyzeCollectionCardImage(image);
+      collectionCardImagePresentationCache.set(src, nextPresentation);
+
+      if (active) {
+        setMeasuredPresentation(nextPresentation);
+        setMeasuredSrc(src);
+      }
+    };
+    image.onerror = () => {
+      if (active) {
+        setMeasuredPresentation(DEFAULT_COLLECTION_CARD_IMAGE_PRESENTATION);
+        setMeasuredSrc(src);
+      }
+    };
+    image.src = src;
+
+    return () => {
+      active = false;
+    };
+  }, [cachedPresentation, src]);
+
+  const presentation =
+    cachedPresentation ??
+    (measuredSrc === src
+      ? measuredPresentation
+      : DEFAULT_COLLECTION_CARD_IMAGE_PRESENTATION);
+
+  const imageFrameStyle = {
+    "--collection-card-image-scale": presentation.scale,
+    "--collection-card-image-shift-x": `${presentation.shiftX}%`,
+    "--collection-card-image-shift-y": `${presentation.shiftY}%`,
+  } as CSSProperties;
+
+  return (
+    <div className="collection-page__card-image-frame" style={imageFrameStyle}>
+      <img
+        alt={alt}
+        className="collection-page__card-image"
+        loading="lazy"
+        src={src}
+      />
+    </div>
+  );
+}
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -207,11 +456,7 @@ function CollectionProductCard({
         <div className="collection-page__card-media">
           <div className="collection-page__card-glow" />
           {image ? (
-            <img
-              alt={product.name}
-              className="collection-page__card-image"
-              src={image}
-            />
+            <CollectionCardImage alt={product.name} src={image} />
           ) : (
             <div className="collection-page__card-placeholder">
               Live image pending
@@ -245,7 +490,9 @@ function CollectionProductCard({
 
           <div className="collection-page__card-foot">
             <div className="collection-page__card-specs">
-              <span>{leadVariant?.size ?? "Collector spec"}</span>
+              <span>
+                {formatProductSize(leadVariant?.size, "Collector spec")}
+              </span>
               <span>{leadVariant?.sku ?? product.id}</span>
             </div>
             <span className="collection-page__card-cta">

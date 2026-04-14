@@ -711,11 +711,29 @@
   z-index: 1;
 }
 
+.collection-page__card-image-frame {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: min(100%, 18.75rem);
+  height: clamp(13.8rem, 34vw, 16rem);
+  margin: 0.95rem auto 0;
+  transform: translate3d(
+      var(--collection-card-image-shift-x, 0%),
+      var(--collection-card-image-shift-y, 0%),
+      0
+    )
+    scale(var(--collection-card-image-scale, 1));
+  transform-origin: center 60%;
+  will-change: transform;
+}
+
 .collection-page__card-image {
-  width: min(100%, 20rem);
-  max-height: 14.5rem;
-  margin: 1.15rem auto 0;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
+  object-position: center bottom;
   filter: drop-shadow(0 28px 44px rgba(0, 0, 0, 0.72));
   transition:
     transform var(--motion-medium),
@@ -1554,6 +1572,11 @@
     min-height: clamp(18rem, 24vw, 21rem);
   }
 
+  .collection-page__card-image-frame {
+    width: min(100%, 19.5rem);
+    height: clamp(15.5rem, 20vw, 17.2rem);
+  }
+
   .collection-page__skeleton-media {
     min-height: clamp(18rem, 24vw, 21rem);
   }
@@ -1706,9 +1729,14 @@
   }
 
   .collection-page__card-image {
+    width: 100%;
+    height: 100%;
+  }
+
+  .collection-page__card-image-frame {
     width: min(100%, 16rem);
-    max-height: 13rem;
-    margin-top: 1.35rem;
+    height: 13rem;
+    margin-top: 1.1rem;
   }
 
   .collection-page__skeleton-image {
