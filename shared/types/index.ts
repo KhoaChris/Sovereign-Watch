@@ -11,7 +11,7 @@ export type OrderStatus =
   | "processing"
   | "shipped"
   | "delivered"
-  | "cancelled";
+  | "cancelled"
 
 export type PaymentMethod =
   | "card"
@@ -340,7 +340,7 @@ export interface CreateProductPayload {
   name: string;
   description: string;
   type: string;
-  images: string[];
+  images: string[]; 
   variants: ProductVariantInput[];
 }
 
