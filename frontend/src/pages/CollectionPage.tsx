@@ -40,7 +40,7 @@ const availabilityLabels: Record<
 > = {
   available: "Ready now",
   limited: "Low stock",
-  soldout: "Sold out",
+  soldout: "Out of stock",
 };
 
 const sortOptions: Array<{ label: string; value: ProductSortOption }> = [
@@ -57,7 +57,7 @@ const availabilityOptions: Array<{
   { label: "All stock states", value: "all" },
   { label: "Ready now", value: "available" },
   { label: "Low stock", value: "limited" },
-  { label: "Sold out", value: "soldout" },
+  { label: "Out of stock", value: "soldout" },
 ];
 
 interface CollectionCardImagePresentation {
@@ -146,7 +146,8 @@ function analyzeCollectionCardImage(
 ): CollectionCardImagePresentation {
   const fallbackPresentation = fallbackCardImagePresentation(image);
   const maxDimension = 320;
-  const scaleFactor = maxDimension / Math.max(image.naturalWidth, image.naturalHeight);
+  const scaleFactor =
+    maxDimension / Math.max(image.naturalWidth, image.naturalHeight);
   const width = Math.max(32, Math.round(image.naturalWidth * scaleFactor));
   const height = Math.max(32, Math.round(image.naturalHeight * scaleFactor));
   const canvas = document.createElement("canvas");
@@ -232,21 +233,13 @@ function analyzeCollectionCardImage(
   };
 }
 
-function CollectionCardImage({
-  alt,
-  src,
-}: {
-  alt: string;
-  src: string;
-}) {
+function CollectionCardImage({ alt, src }: { alt: string; src: string }) {
   const cachedPresentation = collectionCardImagePresentationCache.get(src);
   const [measuredPresentation, setMeasuredPresentation] =
     useState<CollectionCardImagePresentation>(
       cachedPresentation ?? DEFAULT_COLLECTION_CARD_IMAGE_PRESENTATION,
     );
-  const [measuredSrc, setMeasuredSrc] = useState(
-    cachedPresentation ? src : "",
-  );
+  const [measuredSrc, setMeasuredSrc] = useState(cachedPresentation ? src : "");
 
   useEffect(() => {
     if (cachedPresentation) {
@@ -452,7 +445,10 @@ function CollectionProductCard({
       whileInView={{ opacity: 1, y: 0 }}
       whileHover={{ y: -4 }}
     >
-      <Link className="collection-page__card-link" to={`/collection/${product.id}`}>
+      <Link
+        className="collection-page__card-link"
+        to={`/collection/${product.id}`}
+      >
         <div className="collection-page__card-media">
           <div className="collection-page__card-glow" />
           {image ? (

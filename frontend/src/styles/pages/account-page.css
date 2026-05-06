@@ -640,6 +640,7 @@
 .account-page__summary-grid {
   display: grid;
   gap: 0.8rem;
+  height: fit-content;
 }
 
 .account-page__summary-metric {

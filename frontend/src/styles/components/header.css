@@ -271,11 +271,18 @@
   text-transform: uppercase;
 }
 
+.site-header__icon-button--member {
+  padding: 0;
+  overflow: hidden;
+}
+
 .site-header__member-avatar {
-  width: 1.75rem;
-  height: 1.75rem;
+  display: block;
+  width: 100%;
+  height: 100%;
   border-radius: 50%;
   object-fit: cover;
+  object-position: center;
 }
 
 .site-header__icon-button--authed {

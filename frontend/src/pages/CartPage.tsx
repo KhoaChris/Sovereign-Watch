@@ -1,6 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
+import {
+  Elements,
+  PaymentElement,
+  useElements,
+  useStripe,
+} from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
@@ -67,22 +72,26 @@ const PAYMENT_METHODS: Array<{
   {
     value: "card",
     icon: CreditCard,
-    description: "Settle directly inside the checkout desk with a confirmed card payment.",
+    description:
+      "Settle directly inside the checkout desk with a confirmed card payment.",
   },
   {
     value: "bank_transfer",
     icon: Landmark,
-    description: "Place the reserve first, then complete payment through a quieter transfer desk.",
+    description:
+      "Place the reserve first, then complete payment through a quieter transfer desk.",
   },
   {
     value: "cash_on_delivery",
     icon: ShieldCheck,
-    description: "Use cash on delivery for eligible routes and reserve summaries.",
+    description:
+      "Use cash on delivery for eligible routes and reserve summaries.",
   },
   {
     value: "wallet",
     icon: Wallet,
-    description: "Use Apple Pay, Link, or other wallet methods surfaced by Stripe on this device.",
+    description:
+      "Use Apple Pay, Link, or other wallet methods surfaced by Stripe on this device.",
   },
 ];
 
@@ -97,7 +106,13 @@ type CheckoutStep = (typeof CHECKOUT_STEPS)[number]["key"];
 type CheckoutMode = "cart" | "checkout";
 
 type CheckoutFieldErrors = Partial<
-  Record<keyof Pick<CheckoutDetailsInput, "deliveryNotes" | "email" | "fullName" | "phoneNumber" | "shippingAddress">, string>
+  Record<
+    keyof Pick<
+      CheckoutDetailsInput,
+      "deliveryNotes" | "email" | "fullName" | "phoneNumber" | "shippingAddress"
+    >,
+    string
+  >
 >;
 
 interface CheckoutPaymentController {
@@ -202,12 +217,10 @@ function CartSkeleton() {
   );
 }
 
-function CheckoutProgress({
-  currentStep,
-}: {
-  currentStep: CheckoutStep;
-}) {
-  const activeIndex = CHECKOUT_STEPS.findIndex((step) => step.key === currentStep);
+function CheckoutProgress({ currentStep }: { currentStep: CheckoutStep }) {
+  const activeIndex = CHECKOUT_STEPS.findIndex(
+    (step) => step.key === currentStep,
+  );
 
   return (
     <div className="cart-page__progress" aria-label="Checkout progress">
@@ -279,7 +292,9 @@ function EmbeddedPaymentTray({
         }
 
         if (!result.paymentIntent?.id) {
-          throw new Error("Stripe did not return a confirmed payment reference.");
+          throw new Error(
+            "Stripe did not return a confirmed payment reference.",
+          );
         }
 
         return result.paymentIntent.id;
@@ -287,10 +302,6 @@ function EmbeddedPaymentTray({
     };
 
     onControllerChange(controller);
-
-    return () => {
-      onControllerChange(null);
-    };
   }, [clientSecret, elements, onControllerChange, stripe]);
 
   return (
@@ -331,6 +342,7 @@ export function CartPage() {
   const navigate = useNavigate();
   const prefersReducedMotion = useReducedMotion();
   const redirectTimerRef = useRef<number | null>(null);
+  const paymentControllerRef = useRef<CheckoutPaymentController | null>(null);
   const [pendingItemId, setPendingItemId] = useState<string | null>(null);
   const [checkoutMode, setCheckoutMode] = useState<CheckoutMode>("cart");
   const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>("details");
@@ -353,6 +365,13 @@ export function CartPage() {
   } | null>(null);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
 
+  const setActivePaymentController = useCallback((
+    controller: CheckoutPaymentController | null,
+  ): void => {
+    paymentControllerRef.current = controller;
+    setPaymentController(controller);
+  }, []);
+
   useEffect(() => {
     if (checkoutMode === "cart") {
       setCheckoutDetails(createCheckoutDetails(user));
@@ -371,10 +390,13 @@ export function CartPage() {
   useEffect(() => {
     if (
       checkoutMode !== "checkout" ||
-      checkoutStep !== "payment" ||
       !isStripeBackedMethod(paymentMethod)
     ) {
-      setPaymentController(null);
+      setActivePaymentController(null);
+      return;
+    }
+
+    if (checkoutStep !== "payment") {
       return;
     }
 
@@ -428,7 +450,13 @@ export function CartPage() {
     return () => {
       active = false;
     };
-  }, [checkoutMode, checkoutStep, paymentMethod, preparedStripePayment]);
+  }, [
+    checkoutMode,
+    checkoutStep,
+    paymentMethod,
+    preparedStripePayment,
+    setActivePaymentController,
+  ]);
 
   const items = cart?.items ?? [];
   const itemCount = cart?.itemCount ?? 0;
@@ -443,6 +471,8 @@ export function CartPage() {
       };
   const summaryItems = items.slice(0, 3);
   const isStripeMethod = isStripeBackedMethod(paymentMethod);
+  const shouldKeepStripeDeskMounted =
+    checkoutStep === "review" && isStripeMethod;
   const canOpenCheckout = items.length > 0 && !checkoutPending;
   const detailCompletion = useMemo(
     () =>
@@ -521,7 +551,7 @@ export function CartPage() {
     setCheckoutError(null);
     setPaymentError(null);
     setPreparedStripePayment(null);
-    setPaymentController(null);
+    setActivePaymentController(null);
     setDoneOrder(null);
   }
 
@@ -531,7 +561,7 @@ export function CartPage() {
     setCheckoutError(null);
     setPaymentError(null);
     setPreparedStripePayment(null);
-    setPaymentController(null);
+    setActivePaymentController(null);
     setDoneOrder(null);
   }
 
@@ -587,13 +617,18 @@ export function CartPage() {
       return;
     }
 
-    if (!paymentController) {
-      setPaymentError("Payment details are still loading. Wait a moment and try again.");
+    const activePaymentController =
+      paymentController ?? paymentControllerRef.current;
+
+    if (!activePaymentController) {
+      setPaymentError(
+        "Payment details are still loading. Wait a moment and try again.",
+      );
       return;
     }
 
     try {
-      await paymentController.submitForReview();
+      await activePaymentController.submitForReview();
       setCheckoutStep("review");
     } catch (error) {
       setPaymentError(
@@ -613,11 +648,14 @@ export function CartPage() {
       let paymentIntentId: string | undefined;
 
       if (isStripeMethod) {
-        if (!paymentController || !preparedStripePayment) {
+        const activePaymentController =
+          paymentController ?? paymentControllerRef.current;
+
+        if (!activePaymentController || !preparedStripePayment) {
           throw new Error("Stripe payment details are not ready yet.");
         }
 
-        paymentIntentId = await paymentController.confirmPayment();
+        paymentIntentId = await activePaymentController.confirmPayment();
       }
 
       const result = await checkoutCart({
@@ -634,6 +672,7 @@ export function CartPage() {
         id: result.order.id,
         orderNumber: result.order.orderNumber,
       });
+      setActivePaymentController(null);
       setCheckoutStep("done");
       notify({
         title: "Reserve placed",
@@ -731,7 +770,9 @@ export function CartPage() {
           <div className="cart-page__hero-copy">
             <p className="cart-page__eyebrow">Checkout desk</p>
             <h1 className="cart-page__title">
-              {checkoutMode === "cart" ? "Your reserve cart" : "Checkout your reserve"}
+              {checkoutMode === "cart"
+                ? "Your reserve cart"
+                : "Checkout your reserve"}
             </h1>
             <p className="cart-page__copy">
               {checkoutMode === "cart"
@@ -757,10 +798,13 @@ export function CartPage() {
         ) : items.length === 0 ? (
           <motion.section className="cart-page__state" {...revealProps}>
             <div className="cart-page__state-head">
-              <p className="cart-page__state-copy">Your reserve cart is empty</p>
+              <p className="cart-page__state-copy">
+                Your reserve cart is empty
+              </p>
             </div>
             <p className="cart-page__state-support">
-              Nothing is staged right now. Open the marketplace or pull a saved reference from favorites to start a calmer checkout flow.
+              Nothing is staged right now. Open the marketplace or pull a saved
+              reference from favorites to start a calmer checkout flow.
             </p>
             <div className="cart-page__actions">
               <Link
@@ -785,7 +829,10 @@ export function CartPage() {
                     </div>
                   </div>
 
-                  <div className="cart-page__column-headings" aria-hidden="true">
+                  <div
+                    className="cart-page__column-headings"
+                    aria-hidden="true"
+                  >
                     <span>Reference</span>
                     <span>Unit</span>
                     <span>Quantity</span>
@@ -800,15 +847,22 @@ export function CartPage() {
                         <motion.article
                           key={item.id}
                           className="cart-page__row"
-                          initial={prefersReducedMotion ? false : { opacity: 0, y: 16 }}
+                          initial={
+                            prefersReducedMotion ? false : { opacity: 0, y: 16 }
+                          }
                           transition={{ duration: 0.35, delay: index * 0.05 }}
                           viewport={{ once: true, amount: 0.2 }}
                           whileInView={
-                            prefersReducedMotion ? undefined : { opacity: 1, y: 0 }
+                            prefersReducedMotion
+                              ? undefined
+                              : { opacity: 1, y: 0 }
                           }
                         >
                           <div className="cart-page__row-reference">
-                            <Link className="cart-page__thumb" to={`/collection/${item.productId}`}>
+                            <Link
+                              className="cart-page__thumb"
+                              to={`/collection/${item.productId}`}
+                            >
                               <img
                                 alt={item.productName}
                                 className="cart-page__thumb-image"
@@ -817,8 +871,13 @@ export function CartPage() {
                             </Link>
 
                             <div className="cart-page__row-copy">
-                              <p className="cart-page__row-type">{item.productType}</p>
-                              <Link className="cart-page__row-name" to={`/collection/${item.productId}`}>
+                              <p className="cart-page__row-type">
+                                {item.productType}
+                              </p>
+                              <Link
+                                className="cart-page__row-name"
+                                to={`/collection/${item.productId}`}
+                              >
                                 {item.productName}
                               </Link>
                               <p className="cart-page__row-variant">
@@ -828,12 +887,16 @@ export function CartPage() {
                           </div>
 
                           <div className="cart-page__row-unit">
-                            <span className="cart-page__mobile-label">Unit</span>
+                            <span className="cart-page__mobile-label">
+                              Unit
+                            </span>
                             <strong>{formatCurrency(item.pricePerUnit)}</strong>
                           </div>
 
                           <div className="cart-page__row-quantity">
-                            <span className="cart-page__mobile-label">Quantity</span>
+                            <span className="cart-page__mobile-label">
+                              Quantity
+                            </span>
                             <div className="cart-page__stepper">
                               <button
                                 aria-label={`Decrease quantity for ${item.productName}`}
@@ -846,7 +909,9 @@ export function CartPage() {
                               >
                                 <Minus className="cart-page__stepper-icon" />
                               </button>
-                              <span className="cart-page__quantity">{item.quantity}</span>
+                              <span className="cart-page__quantity">
+                                {item.quantity}
+                              </span>
                               <button
                                 aria-label={`Increase quantity for ${item.productName}`}
                                 className="cart-page__stepper-button"
@@ -862,7 +927,9 @@ export function CartPage() {
                           </div>
 
                           <div className="cart-page__row-total">
-                            <span className="cart-page__mobile-label">Line total</span>
+                            <span className="cart-page__mobile-label">
+                              Line total
+                            </span>
                             <strong>{formatCurrency(item.lineTotal)}</strong>
                           </div>
 
@@ -918,7 +985,9 @@ export function CartPage() {
                         src={item.productImage}
                       />
                       <div>
-                        <p className="cart-page__summary-item-name">{item.productName}</p>
+                        <p className="cart-page__summary-item-name">
+                          {item.productName}
+                        </p>
                         <p className="cart-page__summary-item-meta">
                           {renderVariantLabel(item)} · Qty {item.quantity}
                         </p>
@@ -929,8 +998,7 @@ export function CartPage() {
                 </div>
 
                 <p className="cart-page__summary-copy">
-                  Proceed to checkout when the cart looks right. Shipping,
-                  payment, and review now live in a separate guided flow.
+                  Proceed to checkout when you satisfied.
                 </p>
 
                 <div className="cart-page__summary-actions">
@@ -952,7 +1020,9 @@ export function CartPage() {
 
             <div className="cart-page__mobile-bar">
               <div>
-                <span className="cart-page__mobile-bar-label">Reserve total</span>
+                <span className="cart-page__mobile-bar-label">
+                  Reserve total
+                </span>
                 <strong>{formatCurrency(subtotal)}</strong>
               </div>
               <button
@@ -981,7 +1051,7 @@ export function CartPage() {
                   <CheckoutProgress currentStep={checkoutStep} />
                 </div>
 
-                <AnimatePresence mode="wait">
+                <AnimatePresence initial={false}>
                   {checkoutStep === "details" ? (
                     <motion.div
                       key="details"
@@ -999,7 +1069,8 @@ export function CartPage() {
                           </h2>
                         </div>
                         <p className="cart-page__panel-note">
-                          Pulled from your account first, then editable for this reserve.
+                          Pulled from your account first, then editable for this
+                          reserve.
                         </p>
                       </div>
 
@@ -1009,12 +1080,17 @@ export function CartPage() {
                           <input
                             className="cart-page__input"
                             onChange={(event) =>
-                              updateCheckoutField("fullName", event.target.value)
+                              updateCheckoutField(
+                                "fullName",
+                                event.target.value,
+                              )
                             }
                             value={checkoutDetails.fullName}
                           />
                           {detailErrors.fullName ? (
-                            <p className="cart-page__inline-error">{detailErrors.fullName}</p>
+                            <p className="cart-page__inline-error">
+                              {detailErrors.fullName}
+                            </p>
                           ) : null}
                         </label>
 
@@ -1028,7 +1104,9 @@ export function CartPage() {
                             value={checkoutDetails.email}
                           />
                           {detailErrors.email ? (
-                            <p className="cart-page__inline-error">{detailErrors.email}</p>
+                            <p className="cart-page__inline-error">
+                              {detailErrors.email}
+                            </p>
                           ) : null}
                         </label>
 
@@ -1037,12 +1115,17 @@ export function CartPage() {
                           <input
                             className="cart-page__input"
                             onChange={(event) =>
-                              updateCheckoutField("phoneNumber", event.target.value)
+                              updateCheckoutField(
+                                "phoneNumber",
+                                event.target.value,
+                              )
                             }
                             value={checkoutDetails.phoneNumber}
                           />
                           {detailErrors.phoneNumber ? (
-                            <p className="cart-page__inline-error">{detailErrors.phoneNumber}</p>
+                            <p className="cart-page__inline-error">
+                              {detailErrors.phoneNumber}
+                            </p>
                           ) : null}
                         </label>
 
@@ -1052,7 +1135,10 @@ export function CartPage() {
                             <input
                               checked={Boolean(checkoutDetails.saveToAccount)}
                               onChange={(event) =>
-                                updateCheckoutField("saveToAccount", event.target.checked)
+                                updateCheckoutField(
+                                  "saveToAccount",
+                                  event.target.checked,
+                                )
                               }
                               type="checkbox"
                             />
@@ -1068,7 +1154,10 @@ export function CartPage() {
                           <textarea
                             className="cart-page__textarea"
                             onChange={(event) =>
-                              updateCheckoutField("shippingAddress", event.target.value)
+                              updateCheckoutField(
+                                "shippingAddress",
+                                event.target.value,
+                              )
                             }
                             placeholder="Street, district, city, postal code, and any delivery details."
                             rows={4}
@@ -1086,14 +1175,19 @@ export function CartPage() {
                           <textarea
                             className="cart-page__textarea"
                             onChange={(event) =>
-                              updateCheckoutField("deliveryNotes", event.target.value)
+                              updateCheckoutField(
+                                "deliveryNotes",
+                                event.target.value,
+                              )
                             }
                             placeholder="Gate code, landmark, preferred arrival window, or collector notes."
                             rows={3}
                             value={checkoutDetails.deliveryNotes ?? ""}
                           />
                           {detailErrors.deliveryNotes ? (
-                            <p className="cart-page__inline-error">{detailErrors.deliveryNotes}</p>
+                            <p className="cart-page__inline-error">
+                              {detailErrors.deliveryNotes}
+                            </p>
                           ) : null}
                         </label>
                       </div>
@@ -1123,11 +1217,20 @@ export function CartPage() {
                     </motion.div>
                   ) : null}
 
-                  {checkoutStep === "payment" ? (
+                  {checkoutStep === "payment" || shouldKeepStripeDeskMounted ? (
                     <motion.div
                       key="payment"
-                      animate={{ opacity: 1, y: 0 }}
-                      className="cart-page__checkout-step"
+                      animate={
+                        shouldKeepStripeDeskMounted
+                          ? { opacity: 0, y: 0 }
+                          : { opacity: 1, y: 0 }
+                      }
+                      aria-hidden={shouldKeepStripeDeskMounted}
+                      className={`cart-page__checkout-step${
+                        shouldKeepStripeDeskMounted
+                          ? " cart-page__checkout-step--stripe-keepalive"
+                          : ""
+                      }`}
                       exit={{ opacity: 0, y: -14 }}
                       initial={{ opacity: 0, y: 14 }}
                       transition={{ duration: 0.28 }}
@@ -1140,11 +1243,16 @@ export function CartPage() {
                           </h2>
                         </div>
                         <p className="cart-page__panel-note">
-                          Card and wallet methods open a secure Stripe tray inside the page.
+                          Card and wallet methods open a secure Stripe tray
+                          inside the page.
                         </p>
                       </div>
 
-                      <div className="cart-page__payment-grid" role="radiogroup" aria-label="Payment method">
+                      <div
+                        className="cart-page__payment-grid"
+                        role="radiogroup"
+                        aria-label="Payment method"
+                      >
                         {PAYMENT_METHODS.map((method) => {
                           const Icon = method.icon;
                           const isActive = paymentMethod === method.value;
@@ -1159,9 +1267,10 @@ export function CartPage() {
                                 setPaymentError(null);
                                 if (!isStripeBackedMethod(method.value)) {
                                   setPreparedStripePayment(null);
-                                  setPaymentController(null);
+                                  setActivePaymentController(null);
                                 } else {
                                   setPreparedStripePayment(null);
+                                  setActivePaymentController(null);
                                 }
                               }}
                               type="button"
@@ -1170,7 +1279,9 @@ export function CartPage() {
                                 <Icon className="cart-page__payment-icon" />
                               </span>
                               <span className="cart-page__payment-copy">
-                                <strong>{paymentMethodLabel(method.value)}</strong>
+                                <strong>
+                                  {paymentMethodLabel(method.value)}
+                                </strong>
                                 <span>{method.description}</span>
                               </span>
                             </button>
@@ -1186,7 +1297,10 @@ export function CartPage() {
                             className="cart-page__payment-tray"
                             exit={{ height: 0, opacity: 0, y: -12 }}
                             initial={{ height: 0, opacity: 0, y: -12 }}
-                            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                            transition={{
+                              duration: 0.3,
+                              ease: [0.22, 1, 0.36, 1],
+                            }}
                           >
                             {paymentPreparePending ? (
                               <div className="cart-page__payment-tray-loading">
@@ -1198,13 +1312,16 @@ export function CartPage() {
                                 key={`${paymentMethod}:${preparedStripePayment.paymentIntentId}`}
                                 options={{
                                   appearance: stripeAppearance,
-                                  clientSecret: preparedStripePayment.clientSecret,
+                                  clientSecret:
+                                    preparedStripePayment.clientSecret,
                                 }}
                                 stripe={stripePromise}
                               >
                                 <EmbeddedPaymentTray
-                                  clientSecret={preparedStripePayment.clientSecret}
-                                  onControllerChange={setPaymentController}
+                                  clientSecret={
+                                    preparedStripePayment.clientSecret
+                                  }
+                                  onControllerChange={setActivePaymentController}
                                   paymentMethod={paymentMethod}
                                 />
                               </Elements>
@@ -1268,7 +1385,8 @@ export function CartPage() {
                           </h2>
                         </div>
                         <p className="cart-page__panel-note">
-                          This is the final read for delivery details, payment method, and the pieces you are staging.
+                          This is the final read for delivery details, payment
+                          method, and the pieces you are staging.
                         </p>
                       </div>
 
@@ -1358,7 +1476,10 @@ export function CartPage() {
               </section>
             </motion.div>
 
-            <motion.aside className="cart-page__summary cart-page__summary--checkout" {...revealProps}>
+            <motion.aside
+              className="cart-page__summary cart-page__summary--checkout"
+              {...revealProps}
+            >
               <div className="cart-page__summary-head">
                 <p className="cart-page__section-label">{summaryLabel}</p>
                 <h2 className="cart-page__summary-title">
@@ -1373,10 +1494,16 @@ export function CartPage() {
                 onClick={() => setSummaryExpanded((current) => !current)}
                 type="button"
               >
-                <span>{summaryExpanded ? "Hide order summary" : "Show order summary"}</span>
+                <span>
+                  {summaryExpanded
+                    ? "Hide order summary"
+                    : "Show order summary"}
+                </span>
                 <ChevronDown
                   className={`cart-page__summary-toggle-icon${
-                    summaryExpanded ? " cart-page__summary-toggle-icon--open" : ""
+                    summaryExpanded
+                      ? " cart-page__summary-toggle-icon--open"
+                      : ""
                   }`}
                 />
               </button>
@@ -1389,7 +1516,12 @@ export function CartPage() {
                 <div className="cart-page__summary-metrics">
                   <div className="cart-page__summary-row">
                     <span>Current step</span>
-                    <strong>{CHECKOUT_STEPS.find((step) => step.key === checkoutStep)?.label}</strong>
+                    <strong>
+                      {
+                        CHECKOUT_STEPS.find((step) => step.key === checkoutStep)
+                          ?.label
+                      }
+                    </strong>
                   </div>
                   <div className="cart-page__summary-row">
                     <span>Details ready</span>
@@ -1416,7 +1548,9 @@ export function CartPage() {
                         src={item.productImage}
                       />
                       <div>
-                        <p className="cart-page__summary-item-name">{item.productName}</p>
+                        <p className="cart-page__summary-item-name">
+                          {item.productName}
+                        </p>
                         <p className="cart-page__summary-item-meta">
                           {renderVariantLabel(item)} · Qty {item.quantity}
                         </p>

@@ -51,7 +51,8 @@ function getMemberMark(fullName?: string, email?: string): string {
 function readFileAsImage(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Unable to read the selected image."));
+    reader.onerror = () =>
+      reject(new Error("Unable to read the selected image."));
     reader.onload = () => {
       const image = new Image();
       image.onerror = () =>
@@ -217,10 +218,6 @@ function AccountProfileForm({
       label: "Email",
       value: user.email,
     },
-    {
-      label: "Avatar",
-      value: avatarUrl ? "Custom" : "Monogram",
-    },
   ];
 
   async function handleSubmit(): Promise<void> {
@@ -253,7 +250,8 @@ function AccountProfileForm({
       setAvatarUrl(nextAvatarUrl);
       notify({
         title: "Avatar ready",
-        description: "Your new profile image is staged. Save the profile to publish it.",
+        description:
+          "Your new profile image is staged. Save the profile to publish it.",
         tone: "success",
       });
     } catch (error) {
@@ -386,7 +384,9 @@ function AccountProfileForm({
                         src={avatarUrl}
                       />
                     ) : (
-                      <span className="account-page__avatar-mark">{memberMark}</span>
+                      <span className="account-page__avatar-mark">
+                        {memberMark}
+                      </span>
                     )}
                   </div>
 
@@ -398,10 +398,7 @@ function AccountProfileForm({
                           ? "Avatar ready to publish"
                           : "Add a profile image"}
                     </strong>
-                    <p>
-                      Upload a square-friendly PNG, JPG, or WEBP image. We crop
-                      and optimize it automatically for your member desk.
-                    </p>
+                    <p>Upload a square-friendly PNG, JPG, or WEBP image.</p>
                     <div className="account-page__avatar-actions">
                       <button
                         className="account-page__button account-page__button--primary"

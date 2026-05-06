@@ -543,6 +543,95 @@
   transform: translateX(-50%);
 }
 
+.product-page__gallery-strip {
+  position: absolute;
+  z-index: 3;
+  right: 1.2rem;
+  bottom: 3.2rem;
+  left: 1.2rem;
+  display: flex;
+  gap: 0.7rem;
+  overflow-x: auto;
+  padding: 0.15rem 0 0.35rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(207, 168, 125, 0.24) transparent;
+}
+
+.product-page__gallery-strip::-webkit-scrollbar {
+  height: 0.35rem;
+}
+
+.product-page__gallery-strip::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.product-page__gallery-strip::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(207, 168, 125, 0.24);
+}
+
+.product-page__gallery-thumb {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 5.8rem;
+  padding: 0.38rem 0.7rem 0.38rem 0.38rem;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: var(--radius-pill);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.055),
+      rgba(255, 255, 255, 0.018)
+    ),
+    rgba(9, 11, 16, 0.72);
+  color: rgba(244, 236, 228, 0.64);
+  backdrop-filter: blur(16px);
+  transition:
+    border-color var(--motion-fast),
+    color var(--motion-fast),
+    transform var(--motion-fast);
+}
+
+.product-page__gallery-thumb:hover {
+  transform: translateY(-1px);
+  border-color: rgba(207, 168, 125, 0.28);
+  color: var(--color-pearl);
+}
+
+.product-page__gallery-thumb--active {
+  border-color: rgba(207, 168, 125, 0.38);
+  color: var(--color-champagne-bright);
+  background:
+    linear-gradient(
+      135deg,
+      rgba(207, 168, 125, 0.18),
+      rgba(255, 255, 255, 0.02)
+    ),
+    rgba(10, 12, 17, 0.78);
+}
+
+.product-page__gallery-thumb-image {
+  width: 2.4rem;
+  height: 2.4rem;
+  object-fit: contain;
+  border-radius: 999px;
+  background:
+    radial-gradient(
+      circle at 50% 42%,
+      rgba(207, 168, 125, 0.14),
+      transparent 60%
+    ),
+    rgba(255, 255, 255, 0.04);
+}
+
+.product-page__gallery-thumb span {
+  font-size: 0.58rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
 .product-page__content {
   display: grid;
   gap: 1.25rem;

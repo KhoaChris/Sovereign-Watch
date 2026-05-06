@@ -102,8 +102,10 @@ interface AdminMetric {
 }
 
 interface VariantLookupEntry {
+  productImage: string;
   productId: string;
   productName: string;
+  productType: string;
   sku: string;
   variant: ProductVariant;
 }
@@ -1010,8 +1012,10 @@ function buildVariantLookup(
   products.forEach((product) => {
     product.variants.forEach((variant) => {
       lookup.set(variant.id, {
+        productImage: product.images[0] ?? "",
         productId: product.id,
         productName: product.name,
+        productType: product.type,
         sku: variant.sku,
         variant,
       });
@@ -1036,6 +1040,27 @@ function buildOrderItemSummary(
   });
 
   return labels.join(", ");
+}
+
+function buildOrderUnitSummary(order: OrderRecord): string {
+  const totalUnits = order.items.reduce((sum, item) => sum + item.quantity, 0);
+
+  return `${totalUnits} ${totalUnits === 1 ? "piece" : "pieces"}`;
+}
+
+function splitShippingAddress(value: string): {
+  detail: string;
+  recipient: string;
+} {
+  const [recipient, ...detailParts] = value
+    .split("·")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  return {
+    detail: detailParts.join(" · ") || "Delivery details pending",
+    recipient: recipient || "Reserve client",
+  };
 }
 
 function csvEscape(value: string | number | null | undefined): string {
@@ -1112,7 +1137,7 @@ async function fetchOperationsData(includeProducts: boolean): Promise<{
 }> {
   const [orders, products, reviews] = await Promise.all([
     storefrontApi.getOrders(),
-    includeProducts ? storefrontApi.getProducts() : Promise.resolve([]),
+    storefrontApi.getProducts(),
     includeProducts ? storefrontApi.getAdminReviews() : Promise.resolve([]),
   ]);
 
@@ -1171,48 +1196,148 @@ function AdminMetricCard({
 
 function SalesBars({ points }: { points: SalesSeriesPoint[] }) {
   const maxRevenue = Math.max(...points.map((point) => point.revenue), 1);
+  const totalRevenue = points.reduce((sum, point) => sum + point.revenue, 0);
+  const totalOrders = points.reduce((sum, point) => sum + point.count, 0);
+  const peakPoint = points.reduce<SalesSeriesPoint | null>(
+    (current, point) => (!current || point.revenue > current.revenue ? point : current),
+    null,
+  );
+  const chartWidth = 600;
+  const chartHeight = 164;
+  const chartBottom = 138;
+  const chartTop = 18;
+  const step = chartWidth / Math.max(points.length, 1);
+  const linePoints = points.map((point, index) => {
+    const x = step * (index + 0.5);
+    const y =
+      chartBottom -
+      (point.revenue / maxRevenue) * (chartBottom - chartTop);
+
+    return { x, y };
+  });
+  const linePointString = linePoints
+    .map((point) => `${point.x},${point.y}`)
+    .join(" ");
+  const firstLinePoint = linePoints[0];
+  const lastLinePoint = linePoints[linePoints.length - 1];
+  const areaPath =
+    firstLinePoint && lastLinePoint
+      ? `M${firstLinePoint.x},${chartBottom} L${linePointString} L${lastLinePoint.x},${chartBottom} Z`
+      : "";
 
   return (
-    <div className="operations-chart">
-      {points.map((point) => {
-        const revenueHeight = `${Math.max((point.revenue / maxRevenue) * 100, 8)}%`;
-        const orderHeight = `${Math.max((point.count / Math.max(...points.map((entry) => entry.count), 1)) * 100, 12)}%`;
+    <div className="operations-revenue">
+      <div className="operations-revenue__summary" aria-label="Revenue summary">
+        <div>
+          <span>Total captured</span>
+          <strong>{formatCurrency(totalRevenue)}</strong>
+        </div>
+        <div>
+          <span>Peak month</span>
+          <strong>
+            {peakPoint ? `${peakPoint.label} · ${formatCurrency(peakPoint.revenue)}` : "No data"}
+          </strong>
+        </div>
+        <div>
+          <span>Order volume</span>
+          <strong>{totalOrders} orders</strong>
+        </div>
+      </div>
 
-        return (
-          <div key={point.key} className="operations-chart__column">
-            <div className="operations-chart__bar-stack">
+      <div className="operations-revenue__stage">
+        <div className="operations-revenue__axis" aria-hidden="true">
+          <span>{formatCurrency(maxRevenue)}</span>
+          <span>{formatCurrency(maxRevenue / 2)}</span>
+          <span>{formatCurrency(0)}</span>
+        </div>
+        <svg
+          aria-hidden="true"
+          className="operations-revenue__trend"
+          preserveAspectRatio="none"
+          viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+        >
+          <path className="operations-revenue__trend-area" d={areaPath} />
+          <polyline
+            className="operations-revenue__trend-line"
+            points={linePointString}
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
+
+        <div className="operations-revenue__markers" aria-hidden="true">
+          {points.map((point, index) => {
+            const position = linePoints[index];
+            const isPeak = peakPoint?.key === point.key;
+
+            return (
+              <span
+                key={point.key}
+                className={`operations-revenue__node${
+                  isPeak ? " operations-revenue__node--peak" : ""
+                }`}
+                style={{
+                  left: `${(position.x / chartWidth) * 100}%`,
+                  top: `${(position.y / chartHeight) * 100}%`,
+                }}
+              >
+                <span />
+              </span>
+            );
+          })}
+        </div>
+
+        <div className="operations-revenue__months">
+          {points.map((point) => {
+            const isPeak = peakPoint?.key === point.key;
+
+            return (
               <div
-                className="operations-chart__bar operations-chart__bar--ghost"
-                style={{ height: orderHeight }}
-                title={`${point.count} orders`}
-              />
-              <div
-                className="operations-chart__bar operations-chart__bar--revenue"
-                style={{ height: revenueHeight }}
-                title={formatCurrency(point.revenue)}
-              />
-            </div>
-            <span className="operations-chart__label">{point.label}</span>
-          </div>
-        );
-      })}
+                key={point.key}
+                className={`operations-revenue__month${
+                  isPeak ? " operations-revenue__month--peak" : ""
+                }`}
+              >
+                <span>{point.label}</span>
+                <strong>{formatCurrency(point.revenue)}</strong>
+                <small>{point.count} orders</small>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
 
 function DistributionMeter({ segments }: { segments: DonutSegment[] }) {
   const total = segments.reduce((sum, segment) => sum + segment.value, 0);
+  const dominantSegment = segments.reduce<DonutSegment | null>(
+    (current, segment) =>
+      !current || segment.value > current.value ? segment : current,
+    null,
+  );
 
   return (
     <div className="operations-distribution">
-      <div
-        aria-hidden="true"
-        className="operations-distribution__donut"
-        style={{ background: createDonutBackground(segments) }}
-      >
-        <div className="operations-distribution__donut-core">
-          <strong>{total}</strong>
-          <span>orders</span>
+      <div className="operations-distribution__hero">
+        <div
+          aria-hidden="true"
+          className="operations-distribution__donut"
+          style={{ background: createDonutBackground(segments) }}
+        >
+          <div className="operations-distribution__donut-core">
+            <strong>{total}</strong>
+            <span>orders</span>
+          </div>
+        </div>
+        <div className="operations-distribution__summary">
+          <span>Dominant status</span>
+          <strong>{dominantSegment?.label ?? "No orders"}</strong>
+          <p>
+            {total > 0
+              ? `${dominantSegment?.value ?? 0} of ${total} orders sit in this lane.`
+              : "No order activity is available yet."}
+          </p>
         </div>
       </div>
 
@@ -1514,11 +1639,14 @@ function MemberOrderCard({
   highlighted = false,
   order,
   prefersReducedMotion,
+  variantLookup,
 }: {
   highlighted?: boolean;
   order: OrderRecord;
   prefersReducedMotion: boolean;
+  variantLookup: Map<string, VariantLookupEntry>;
 }) {
+  const [itemsOpen, setItemsOpen] = useState(false);
   const stages = buildMemberOrderStages(order);
   const paymentStatusLabel =
     order.payment?.status !== undefined
@@ -1536,9 +1664,34 @@ function MemberOrderCard({
     order.shipping?.trackingNumber,
     "Pending dispatch",
   );
+  const shippingSummary = splitShippingAddress(order.shippingAddress);
   const itemCountLabel = `${order.items.length} piece${
     order.items.length === 1 ? "" : "s"
   }`;
+  const itemDetails = order.items.map((item) => {
+    const lookup = variantLookup.get(item.productVariantId);
+    const variant = lookup?.variant;
+    const sizeLabel = variant?.size ? formatProductSize(variant.size) : "";
+    const lineTotal =
+      item.quantity * item.pricePerUnit - item.discountAmount;
+
+    return {
+      color: variant?.color ?? "",
+      discountAmount: item.discountAmount,
+      id: item.id,
+      image: lookup?.productImage ?? "",
+      lineTotal,
+      pricePerUnit: item.pricePerUnit,
+      productName:
+        lookup?.productName ??
+        `Variant ${item.productVariantId.slice(0, 6).toUpperCase()}`,
+      productType: lookup?.productType ?? "Reserved piece",
+      quantity: item.quantity,
+      sizeLabel,
+      sku: lookup?.sku ?? item.productVariantId.slice(0, 8).toUpperCase(),
+    };
+  });
+  const itemsPanelId = `member-order-items-${order.id}`;
 
   return (
     <motion.article
@@ -1574,42 +1727,131 @@ function MemberOrderCard({
             key={stage.label}
             className={`member-orders__timeline-step member-orders__timeline-step--${stage.tone}`}
           >
-            <span className="member-orders__timeline-label">{stage.label}</span>
-            <strong>{stage.detail}</strong>
+            <span className="member-orders__timeline-marker" aria-hidden="true">
+              <span />
+            </span>
+            <div>
+              <span className="member-orders__timeline-label">
+                {stage.label}
+              </span>
+              <strong>{stage.detail}</strong>
+            </div>
           </div>
         ))}
       </div>
 
-      <div className="member-orders__meta-grid">
-        <div className="member-orders__meta-item">
-          <span>Payment method</span>
-          <strong>{paymentMethodLabel(order.payment?.method)}</strong>
+      <div className="member-orders__ledger">
+        <div className="member-orders__meta-grid">
+          <div className="member-orders__meta-item">
+            <span>Payment method</span>
+            <strong>{paymentMethodLabel(order.payment?.method)}</strong>
+          </div>
+          <div className="member-orders__meta-item">
+            <span>Payment status</span>
+            <strong>{paymentStatusLabel}</strong>
+          </div>
+          <div className="member-orders__meta-item">
+            <span>Shipping status</span>
+            <strong>{shippingStatusLabel}</strong>
+          </div>
+          <div className="member-orders__meta-item">
+            <span>Items in reserve</span>
+            <strong>{itemCountLabel}</strong>
+          </div>
+          <div className="member-orders__meta-item">
+            <span>Courier</span>
+            <strong>{courierLabel}</strong>
+          </div>
+          <div className="member-orders__meta-item">
+            <span>Tracking</span>
+            <strong>{trackingLabel}</strong>
+          </div>
         </div>
-        <div className="member-orders__meta-item">
-          <span>Payment status</span>
-          <strong>{paymentStatusLabel}</strong>
-        </div>
-        <div className="member-orders__meta-item">
-          <span>Shipping status</span>
-          <strong>{shippingStatusLabel}</strong>
-        </div>
-        <div className="member-orders__meta-item">
-          <span>Items in reserve</span>
-          <strong>{itemCountLabel}</strong>
-        </div>
-        <div className="member-orders__meta-item">
-          <span>Courier</span>
-          <strong>{courierLabel}</strong>
-        </div>
-        <div className="member-orders__meta-item">
-          <span>Tracking</span>
-          <strong>{trackingLabel}</strong>
+
+        <div className="member-orders__address">
+          <span>Delivery address</span>
+          <strong>{shippingSummary.recipient}</strong>
+          <p>{shippingSummary.detail}</p>
         </div>
       </div>
 
-      <div className="member-orders__address">
-        <span>Delivery address</span>
-        <p>{order.shippingAddress}</p>
+      <div
+        className={`member-orders__items${
+          itemsOpen ? " member-orders__items--open" : ""
+        }`}
+      >
+        <button
+          aria-controls={itemsPanelId}
+          aria-expanded={itemsOpen}
+          className="member-orders__items-toggle"
+          onClick={() => setItemsOpen((current) => !current)}
+          type="button"
+        >
+          <span className="member-orders__items-toggle-copy">
+            <span className="orders-page__eyebrow">Reserved pieces</span>
+            <strong>
+              View item details · {itemCountLabel}
+            </strong>
+          </span>
+          <ChevronDown
+            aria-hidden="true"
+            className="member-orders__items-toggle-icon"
+          />
+        </button>
+
+        {itemsOpen ? (
+          <ul
+            className="member-orders__items-list"
+            id={itemsPanelId}
+            role="list"
+          >
+            {itemDetails.map((entry) => {
+              const variantLine = [entry.sizeLabel, entry.color]
+                .filter(Boolean)
+                .join(" · ");
+
+              return (
+                <li className="member-orders__item" key={entry.id}>
+                  <div className="member-orders__item-media" aria-hidden="true">
+                    {entry.image ? (
+                      <img
+                        alt=""
+                        loading="lazy"
+                        src={entry.image}
+                      />
+                    ) : (
+                      <span className="member-orders__item-media-fallback">
+                        {entry.productName.charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <div className="member-orders__item-body">
+                    <p className="member-orders__item-type">
+                      {entry.productType}
+                    </p>
+                    <strong className="member-orders__item-name">
+                      {entry.productName}
+                    </strong>
+                    <p className="member-orders__item-meta">
+                      <span>SKU {entry.sku}</span>
+                      {variantLine ? <span>{variantLine}</span> : null}
+                      <span>Qty {entry.quantity}</span>
+                    </p>
+                  </div>
+                  <div className="member-orders__item-price">
+                    <span>Unit · {formatCurrency(entry.pricePerUnit)}</span>
+                    {entry.discountAmount > 0 ? (
+                      <span className="member-orders__item-discount">
+                        Discount −{formatCurrency(entry.discountAmount)}
+                      </span>
+                    ) : null}
+                    <strong>{formatCurrency(entry.lineTotal)}</strong>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
       </div>
     </motion.article>
   );
@@ -2472,6 +2714,7 @@ export function OrdersPage({
                   highlighted={order.id === highlightedOrderId}
                   order={order}
                   prefersReducedMotion={prefersReducedMotion}
+                  variantLookup={variantLookup}
                 />
               ))}
             </div>
@@ -2666,9 +2909,15 @@ export function OrdersPage({
                     >
                       <div>
                         <strong>{product.name}</strong>
-                        <span>{humanizeToken(product.brandId)}</span>
+                        <span>
+                          {humanizeToken(product.brandId)} ·{" "}
+                          {humanizeToken(product.categoryId)}
+                        </span>
                       </div>
-                      <b>{productStock(product)}</b>
+                      <b>
+                        <span>{productStock(product)}</span>
+                        left
+                      </b>
                     </button>
                   ))}
                   {lowStockProducts.length === 0 ? (
@@ -2706,6 +2955,10 @@ export function OrdersPage({
                         order,
                         variantLookup,
                       );
+                      const unitSummary = buildOrderUnitSummary(order);
+                      const shippingSummary = splitShippingAddress(
+                        order.shippingAddress,
+                      );
 
                       return (
                         <motion.article
@@ -2717,12 +2970,17 @@ export function OrdersPage({
                           whileInView={{ opacity: 1, y: 0 }}
                         >
                           <div className="operations-order-card__summary">
-                            <div>
+                            <div className="operations-order-card__identity">
                               <p className="orders-page__eyebrow">
                                 {order.orderNumber}
                               </p>
-                              <h3>{order.shippingAddress}</h3>
-                              <p>{formatDateTime(order.createdAt)}</p>
+                              <h3>{shippingSummary.recipient}</h3>
+                              <p className="operations-order-card__address">
+                                {shippingSummary.detail}
+                              </p>
+                              <p className="operations-order-card__date">
+                                {formatDateTime(order.createdAt)}
+                              </p>
                             </div>
                             <div className="operations-order-card__summary-rail">
                               <span
@@ -2736,24 +2994,25 @@ export function OrdersPage({
                             </div>
                           </div>
 
-                          <div className="operations-order-card__meta">
-                            <div>
-                              <span>Items</span>
-                              <strong>{itemSummary}</strong>
+                          <div className="operations-order-card__snapshot">
+                            <div className="operations-order-card__snapshot-item operations-order-card__snapshot-item--wide">
+                              <span>Reserve contents</span>
+                              <strong>{unitSummary}</strong>
+                              <p>{itemSummary}</p>
                             </div>
-                            <div>
+                            <div className="operations-order-card__snapshot-item">
                               <span>Payment</span>
                               <strong>
                                 {formatStatusLabel(order.payment?.status)}
                               </strong>
                             </div>
-                            <div>
+                            <div className="operations-order-card__snapshot-item">
                               <span>Shipping</span>
                               <strong>
                                 {formatStatusLabel(order.shipping?.status)}
                               </strong>
                             </div>
-                            <div>
+                            <div className="operations-order-card__snapshot-item">
                               <span>Method</span>
                               <strong>
                                 {formatStatusLabel(order.payment?.method)}
@@ -2761,127 +3020,133 @@ export function OrdersPage({
                             </div>
                           </div>
 
-                          <div className="operations-order-card__controls">
-                            <label className="operations-field">
-                              <span>Status</span>
-                              <select
-                                onChange={(event) =>
-                                  setDrafts((current) => ({
-                                    ...current,
-                                    [order.id]: {
-                                      ...getDraft(order),
-                                      status: event.target.value as OrderStatus,
-                                    },
-                                  }))
-                                }
-                                value={draft.status ?? order.status}
+                          <div className="operations-order-card__dock">
+                            <div className="operations-order-card__dock-head">
+                              <span>Fulfillment dock</span>
+                            </div>
+
+                            <div className="operations-order-card__controls">
+                              <label className="operations-field">
+                                <span>Status</span>
+                                <select
+                                  onChange={(event) =>
+                                    setDrafts((current) => ({
+                                      ...current,
+                                      [order.id]: {
+                                        ...getDraft(order),
+                                        status: event.target.value as OrderStatus,
+                                      },
+                                    }))
+                                  }
+                                  value={draft.status ?? order.status}
+                                >
+                                  {ORDER_STATUS_OPTIONS.map((value) => (
+                                    <option key={value} value={value}>
+                                      {formatStatusLabel(value)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+
+                              <label className="operations-field">
+                                <span>Payment</span>
+                                <select
+                                  onChange={(event) =>
+                                    setDrafts((current) => ({
+                                      ...current,
+                                      [order.id]: {
+                                        ...getDraft(order),
+                                        paymentStatus: event.target
+                                          .value as PaymentStatus,
+                                      },
+                                    }))
+                                  }
+                                  value={
+                                    draft.paymentStatus ??
+                                    order.payment?.status ??
+                                    "pending"
+                                  }
+                                >
+                                  {PAYMENT_STATUS_OPTIONS.map((value) => (
+                                    <option key={value} value={value}>
+                                      {formatStatusLabel(value)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+
+                              <label className="operations-field">
+                                <span>Shipping</span>
+                                <select
+                                  onChange={(event) =>
+                                    setDrafts((current) => ({
+                                      ...current,
+                                      [order.id]: {
+                                        ...getDraft(order),
+                                        shippingStatus: event.target
+                                          .value as ShippingStatus,
+                                      },
+                                    }))
+                                  }
+                                  value={
+                                    draft.shippingStatus ??
+                                    order.shipping?.status ??
+                                    "pending"
+                                  }
+                                >
+                                  {SHIPPING_STATUS_OPTIONS.map((value) => (
+                                    <option key={value} value={value}>
+                                      {formatStatusLabel(value)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+
+                              <label className="operations-field">
+                                <span>Courier</span>
+                                <input
+                                  onChange={(event) =>
+                                    setDrafts((current) => ({
+                                      ...current,
+                                      [order.id]: {
+                                        ...getDraft(order),
+                                        courierName: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                  placeholder="Courier name"
+                                  value={draft.courierName ?? ""}
+                                />
+                              </label>
+
+                              <label className="operations-field">
+                                <span>Tracking</span>
+                                <input
+                                  onChange={(event) =>
+                                    setDrafts((current) => ({
+                                      ...current,
+                                      [order.id]: {
+                                        ...getDraft(order),
+                                        trackingNumber: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                  placeholder="Tracking number"
+                                  value={draft.trackingNumber ?? ""}
+                                />
+                              </label>
+
+                              <button
+                                className="orders-page__button orders-page__button--primary operations-order-card__save"
+                                disabled={pendingOrderId === order.id}
+                                onClick={() => {
+                                  void handleAdminUpdate(order.id, draft);
+                                }}
+                                type="button"
                               >
-                                {ORDER_STATUS_OPTIONS.map((value) => (
-                                  <option key={value} value={value}>
-                                    {formatStatusLabel(value)}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-
-                            <label className="operations-field">
-                              <span>Payment</span>
-                              <select
-                                onChange={(event) =>
-                                  setDrafts((current) => ({
-                                    ...current,
-                                    [order.id]: {
-                                      ...getDraft(order),
-                                      paymentStatus: event.target
-                                        .value as PaymentStatus,
-                                    },
-                                  }))
-                                }
-                                value={
-                                  draft.paymentStatus ??
-                                  order.payment?.status ??
-                                  "pending"
-                                }
-                              >
-                                {PAYMENT_STATUS_OPTIONS.map((value) => (
-                                  <option key={value} value={value}>
-                                    {formatStatusLabel(value)}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-
-                            <label className="operations-field">
-                              <span>Shipping</span>
-                              <select
-                                onChange={(event) =>
-                                  setDrafts((current) => ({
-                                    ...current,
-                                    [order.id]: {
-                                      ...getDraft(order),
-                                      shippingStatus: event.target
-                                        .value as ShippingStatus,
-                                    },
-                                  }))
-                                }
-                                value={
-                                  draft.shippingStatus ??
-                                  order.shipping?.status ??
-                                  "pending"
-                                }
-                              >
-                                {SHIPPING_STATUS_OPTIONS.map((value) => (
-                                  <option key={value} value={value}>
-                                    {formatStatusLabel(value)}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-
-                            <label className="operations-field">
-                              <span>Courier</span>
-                              <input
-                                onChange={(event) =>
-                                  setDrafts((current) => ({
-                                    ...current,
-                                    [order.id]: {
-                                      ...getDraft(order),
-                                      courierName: event.target.value,
-                                    },
-                                  }))
-                                }
-                                placeholder="Courier name"
-                                value={draft.courierName ?? ""}
-                              />
-                            </label>
-
-                            <label className="operations-field">
-                              <span>Tracking</span>
-                              <input
-                                onChange={(event) =>
-                                  setDrafts((current) => ({
-                                    ...current,
-                                    [order.id]: {
-                                      ...getDraft(order),
-                                      trackingNumber: event.target.value,
-                                    },
-                                  }))
-                                }
-                                placeholder="Tracking number"
-                                value={draft.trackingNumber ?? ""}
-                              />
-                            </label>
-
-                            <button
-                              className="orders-page__button orders-page__button--primary operations-order-card__save"
-                              disabled={pendingOrderId === order.id}
-                              onClick={() => {
-                                void handleAdminUpdate(order.id, draft);
-                              }}
-                              type="button"
-                            >
-                              {pendingOrderId === order.id ? "Saving" : "Save"}
-                            </button>
+                                {pendingOrderId === order.id ? "Saving" : "Save"}
+                              </button>
+                            </div>
                           </div>
                         </motion.article>
                       );
@@ -3213,16 +3478,16 @@ export function OrdersPage({
                                           ? ""
                                           : "s"
                                       } in the gallery`
-                                    : "Choose images from your computer"}
+                                    : "Upload product images"}
                               </strong>
                               <p>
                                 {uploadingImages
                                   ? `Processing ${selectedImageNames.length} file${
                                       selectedImageNames.length === 1 ? "" : "s"
-                                    } for the Firestore-safe gallery.`
+                                    } for the gallery.`
                                   : productForm.images.length > 0
-                                    ? "These images are already attached to the product. You can add more files or remove any thumbnail below."
-                                    : "PNG or JPG only. Each file should stay under 4 MB and will be compressed into a Firestore-safe gallery."}
+                                    ? "Add more files or remove any thumbnail below."
+                                    : "PNG or JPG only, up to 4 MB each."}
                               </p>
                             </div>
                             <label
@@ -3749,9 +4014,7 @@ export function OrdersPage({
                                 month: "short",
                                 year: "numeric",
                               }).format(
-                                new Date(
-                                  review.updatedAt || review.createdAt,
-                                ),
+                                new Date(review.updatedAt || review.createdAt),
                               )}
                             </span>
                           </div>

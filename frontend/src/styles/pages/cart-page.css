@@ -228,14 +228,6 @@
   width: 5.8rem;
   aspect-ratio: 1;
   border-radius: 1.2rem;
-  background:
-    radial-gradient(
-      circle at 50% 38%,
-      rgba(207, 168, 125, 0.18),
-      transparent 58%
-    ),
-    linear-gradient(145deg, rgba(18, 20, 28, 0.98), rgba(8, 10, 16, 0.96));
-  overflow: hidden;
 }
 
 .cart-page__thumb-image {
@@ -375,6 +367,7 @@
 }
 
 .cart-page__panel--checkout {
+  position: relative;
   display: grid;
   gap: 1.4rem;
   overflow: hidden;
@@ -496,6 +489,15 @@
 .cart-page__checkout-step {
   display: grid;
   gap: 1.35rem;
+}
+
+.cart-page__checkout-step--stripe-keepalive {
+  position: absolute;
+  inset: auto 0 0;
+  width: 100%;
+  max-height: 1px;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .cart-page__checkout-step--done {

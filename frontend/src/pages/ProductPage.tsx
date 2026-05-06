@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
   Heart,
@@ -68,9 +68,7 @@ function ReviewStars({
   return (
     <div
       aria-label={
-        readOnly
-          ? `Rated ${normalizedRating} out of 5`
-          : "Choose a rating"
+        readOnly ? `Rated ${normalizedRating} out of 5` : "Choose a rating"
       }
       className={`product-page__review-stars ${
         readOnly ? "product-page__review-stars--readonly" : ""
@@ -225,10 +223,7 @@ function ProductLoadingState() {
 
             <div className="product-page__loading-variants">
               {Array.from({ length: 3 }).map((_, index) => (
-                <span
-                  key={index}
-                  className="product-page__loading-variant"
-                />
+                <span key={index} className="product-page__loading-variant" />
               ))}
             </div>
           </div>
@@ -253,6 +248,7 @@ export function ProductPage() {
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(
     null,
   );
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [favoriteBusy, setFavoriteBusy] = useState(false);
@@ -291,6 +287,7 @@ export function ProductPage() {
 
         setProduct(result);
         setSelectedVariant(result.variants[0] ?? null);
+        setSelectedImageIndex(0);
         setLoading(false);
       })
       .catch((error: unknown) => {
@@ -300,6 +297,7 @@ export function ProductPage() {
 
         setProduct(null);
         setSelectedVariant(null);
+        setSelectedImageIndex(0);
         setLoading(false);
         setLoadError(
           error instanceof Error
@@ -320,6 +318,13 @@ export function ProductPage() {
 
     return selectedVariant.discountPrice ?? selectedVariant.price;
   }, [selectedVariant]);
+
+  const galleryImages = useMemo(
+    () => product?.images.filter((image) => image.trim().length > 0) ?? [],
+    [product?.images],
+  );
+  const activeGalleryImage =
+    galleryImages[selectedImageIndex] ?? galleryImages[0] ?? "";
 
   const inventoryTone = useMemo(() => {
     const stock = selectedVariant?.stockQuantity ?? 0;
@@ -504,9 +509,7 @@ export function ProductPage() {
         description: isFavorite
           ? "The reference was removed from your saved desk."
           : "The reference was added to your saved desk.",
-        title: isFavorite
-          ? `${product.name} removed`
-          : `${product.name} saved`,
+        title: isFavorite ? `${product.name} removed` : `${product.name} saved`,
         tone: "success",
       });
     } catch (error) {
@@ -680,15 +683,24 @@ export function ProductPage() {
                 <div className="product-page__visual-grid" />
                 <div className="product-page__visual-meta product-page__visual-meta--top">
                   <span>Limited to selected desks</span>
-                  <span>{formatProductSize(selectedVariant?.size, "42mm")}</span>
+                  <span>
+                    {formatProductSize(selectedVariant?.size, "42mm")}
+                  </span>
                 </div>
                 <div className="product-page__media">
-                  {product.images[0] ? (
-                    <img
-                      alt={product.name}
-                      className="product-page__image"
-                      src={product.images[0]}
-                    />
+                  {activeGalleryImage ? (
+                    <AnimatePresence mode="wait">
+                      <motion.img
+                        key={activeGalleryImage}
+                        alt={`${product.name} view ${selectedImageIndex + 1}`}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="product-page__image"
+                        exit={{ opacity: 0, scale: 0.985 }}
+                        initial={{ opacity: 0, scale: 0.985 }}
+                        src={activeGalleryImage}
+                        transition={{ duration: 0.28 }}
+                      />
+                    </AnimatePresence>
                   ) : (
                     <div className="product-page__image-placeholder">
                       Campaign image pending
@@ -696,9 +708,37 @@ export function ProductPage() {
                   )}
                   <div className="product-page__image-halo" />
                 </div>
+                {galleryImages.length > 1 ? (
+                  <div
+                    aria-label="Product image gallery"
+                    className="product-page__gallery-strip"
+                  >
+                    {galleryImages.map((image, index) => (
+                      <button
+                        key={`${image}-${index}`}
+                        aria-label={`Show product image ${index + 1}`}
+                        aria-pressed={selectedImageIndex === index}
+                        className={`product-page__gallery-thumb${
+                          selectedImageIndex === index
+                            ? " product-page__gallery-thumb--active"
+                            : ""
+                        }`}
+                        onClick={() => setSelectedImageIndex(index)}
+                        type="button"
+                      >
+                        <img
+                          alt=""
+                          className="product-page__gallery-thumb-image"
+                          src={image}
+                        />
+                        <span>{String(index + 1).padStart(2, "0")}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
                 <div className="product-page__visual-meta product-page__visual-meta--bottom">
                   <span>{selectedVariant?.color ?? "Signature tone"}</span>
-                  <span>Private reserve available</span>
+                  <span>{product?.brandId ?? "Private Reserve"}</span>
                 </div>
               </motion.div>
 
@@ -882,7 +922,9 @@ export function ProductPage() {
                       <div className="product-page__review-composer-head">
                         <div>
                           <p className="product-page__label">
-                            {viewerReview ? "Your live review" : "Rate this reference"}
+                            {viewerReview
+                              ? "Your live review"
+                              : "Rate this reference"}
                           </p>
                           <h3>
                             {viewerReview
@@ -892,7 +934,10 @@ export function ProductPage() {
                         </div>
                         <ReviewStars
                           onRate={(rating) =>
-                            setReviewDraft((current) => ({ ...current, rating }))
+                            setReviewDraft((current) => ({
+                              ...current,
+                              rating,
+                            }))
                           }
                           rating={reviewDraft.rating}
                         />
@@ -950,7 +995,10 @@ export function ProductPage() {
                         Reviews stay public for members and guests. Moderate or
                         remove any entry from the Operations desk.
                       </p>
-                      <Link className="product-page__secondary-action" to="/orders">
+                      <Link
+                        className="product-page__secondary-action"
+                        to="/orders"
+                      >
                         Open Operations
                       </Link>
                     </div>
@@ -989,7 +1037,10 @@ export function ProductPage() {
               {reviewsLoading ? (
                 <div className="product-page__review-stream product-page__review-stream--loading">
                   {Array.from({ length: 3 }).map((_, index) => (
-                    <div key={index} className="product-page__review-item product-page__review-item--skeleton">
+                    <div
+                      key={index}
+                      className="product-page__review-item product-page__review-item--skeleton"
+                    >
                       <div className="product-page__review-avatar product-page__review-avatar--skeleton" />
                       <div className="product-page__review-copy">
                         <div className="product-page__review-line product-page__review-line--title" />

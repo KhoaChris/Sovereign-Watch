@@ -126,9 +126,9 @@ const editorialVolumes: EditorialVolume[] = [
 ];
 
 const editorialChapterRanges: EditorialChapterRange[] = [
-  [0, 0.14, 0.26, 0.38],
-  [0.24, 0.42, 0.58, 0.72],
-  [0.54, 0.72, 0.88, 1],
+  [0.1, 0.18, 0.32, 0.38],
+  [0.42, 0.48, 0.64, 0.7],
+  [0.74, 0.8, 0.96, 1],
 ];
 
 function EditorialHotspot({
@@ -149,7 +149,7 @@ function EditorialHotspot({
   const opacity = useTransform(
     progress,
     [enter, active, linger, exit],
-    [0.2, 1, 1, 0.28],
+    [0, 1, 1, 0],
   );
   const x = useTransform(
     progress,
@@ -199,6 +199,53 @@ function EditorialHotspot({
       <span className="home-page__story-hotspot-label">
         {chapter.hotspotLabel}
       </span>
+    </motion.div>
+  );
+}
+
+function EditorialVolumeBadge({
+  chapter,
+  progress,
+  range,
+  isAnimated,
+  total,
+  position,
+}: {
+  chapter: EditorialVolume;
+  progress: MotionValue<number>;
+  range: EditorialChapterRange;
+  isAnimated: boolean;
+  total: number;
+  position: number;
+}) {
+  const prefersReducedMotion = useReducedMotion();
+  const [enter, active, linger, exit] = range;
+
+  const opacity = useTransform(
+    progress,
+    [enter, active, linger, exit],
+    [0, 1, 1, 0],
+  );
+  const y = useTransform(
+    progress,
+    [enter, active, linger, exit],
+    [10, 0, 0, -8],
+  );
+
+  return (
+    <motion.div
+      aria-hidden="true"
+      className="home-page__story-badge"
+      style={
+        isAnimated && !prefersReducedMotion ? { opacity, y } : undefined
+      }
+    >
+      <span className="home-page__story-badge-counter">
+        <strong>{String(position).padStart(2, "0")}</strong>
+        <em>/{String(total).padStart(2, "0")}</em>
+      </span>
+      <span className="home-page__story-badge-divider" aria-hidden="true" />
+      <span className="home-page__story-badge-title">{chapter.kicker}</span>
     </motion.div>
   );
 }
@@ -288,7 +335,7 @@ export function HomePage({
   const storyRef = useRef<HTMLElement | null>(null);
   const prefersReducedMotion = useReducedMotion();
   const isStoryDesktop = useMediaQuery("(min-width: 768px)");
-  const shouldGateStory = isStoryDesktop && !prefersReducedMotion;
+  const shouldAnimateStory = isStoryDesktop && !prefersReducedMotion;
   const heroReferenceImage = "/editorial/3.png";
   const storyReferenceImage = "/editorial/5.png";
 
@@ -306,10 +353,6 @@ export function HomePage({
     target: storyRef,
     offset: ["start start", "end end"],
   });
-  const storyNarrativeProgress = useTransform(storyProgress, [0.38, 1], [0, 1]);
-  const storyChapterProgress = shouldGateStory
-    ? storyNarrativeProgress
-    : storyProgress;
 
   const heroPosterY = useTransform(heroProgress, [0, 1], [0, 40]);
   const heroPosterScale = useTransform(heroProgress, [0, 1], [1, 0.985]);
@@ -401,44 +444,44 @@ export function HomePage({
     [0.1, 0.22, 0.22, 0.36, 0.22],
   );
   const storyCopyOpacity = useTransform(
-    storyNarrativeProgress,
-    [0, 0.08, 0.18, 1],
-    [0, 0, 1, 1],
+    storyProgress,
+    [0, 0.04, 0.12, 1],
+    [0.4, 0.7, 1, 1],
   );
   const storyCopyX = useTransform(
-    storyNarrativeProgress,
-    [0, 0.18, 1],
-    [34, 0, 0],
+    storyProgress,
+    [0, 0.12, 1],
+    [18, 0, 0],
   );
   const storyHotspotsOpacity = useTransform(
-    storyNarrativeProgress,
-    [0, 0.06, 0.18, 1],
-    [0, 0, 1, 1],
+    storyProgress,
+    [0, 0.04, 0.12, 1],
+    [0, 0.6, 1, 1],
   );
   const storyHotspotsY = useTransform(
-    storyNarrativeProgress,
-    [0, 0.18, 1],
+    storyProgress,
+    [0, 0.12, 1],
     [10, 0, 0],
   );
   const storyRailOpacity = useTransform(
-    storyNarrativeProgress,
-    [0, 0.08, 0.2, 1],
-    [0, 0, 1, 1],
+    storyProgress,
+    [0, 0.04, 0.14, 1],
+    [0, 0.4, 1, 1],
   );
   const storyRailScale = useTransform(
-    storyChapterProgress,
-    [0.06, 0.94],
+    storyProgress,
+    [0.04, 0.96],
     [0.02, 1],
   );
   const storyMetaY = useTransform(
-    storyNarrativeProgress,
-    [0, 0.18, 1],
-    [18, 0, -6],
+    storyProgress,
+    [0, 0.12, 1],
+    [14, 0, -4],
   );
   const storyMetaOpacity = useTransform(
-    storyNarrativeProgress,
-    [0, 0.14, 0.92, 1],
-    [0, 1, 1, 0.82],
+    storyProgress,
+    [0, 0.1, 0.92, 1],
+    [0.2, 1, 1, 0.85],
   );
 
   return (
@@ -536,59 +579,37 @@ export function HomePage({
               <motion.div
                 className="home-page__story-visual"
                 style={
-                  shouldGateStory
-                    ? {
-                        x: storyVisualX,
-                        y: storyVisualY,
-                      }
-                    : prefersReducedMotion
-                      ? undefined
-                      : {
-                          x: storyVisualX,
-                          y: storyVisualY,
-                        }
+                  prefersReducedMotion
+                    ? undefined
+                    : { x: storyVisualX, y: storyVisualY }
                 }
               >
                 <div className="home-page__story-visual-stage">
                   <motion.div
                     className="home-page__story-glow"
                     style={
-                      shouldGateStory
-                        ? {
+                      prefersReducedMotion
+                        ? undefined
+                        : {
                             opacity: storyGlowOpacity,
                             scale: storyGlowScale,
                             x: storyGlowX,
                             y: storyGlowY,
                           }
-                        : prefersReducedMotion
-                          ? undefined
-                          : {
-                              opacity: storyGlowOpacity,
-                              scale: storyGlowScale,
-                              x: storyGlowX,
-                              y: storyGlowY,
-                            }
                     }
                   />
                   <motion.div
                     aria-hidden="true"
                     className="home-page__story-aura"
                     style={
-                      shouldGateStory
-                        ? {
+                      prefersReducedMotion
+                        ? undefined
+                        : {
                             opacity: storyAuraOpacity,
                             rotate: storyAuraRotate,
                             scale: storyAuraScale,
                             y: storyAuraY,
                           }
-                        : prefersReducedMotion
-                          ? undefined
-                          : {
-                              opacity: storyAuraOpacity,
-                              rotate: storyAuraRotate,
-                              scale: storyAuraScale,
-                              y: storyAuraY,
-                            }
                     }
                   />
 
@@ -597,21 +618,14 @@ export function HomePage({
                     className="home-page__story-watch"
                     src={storyReferenceImage}
                     style={
-                      shouldGateStory
-                        ? {
+                      prefersReducedMotion
+                        ? undefined
+                        : {
                             rotate: storyWatchRotate,
                             scale: storyWatchScale,
                             x: storyWatchX,
                             y: storyWatchY,
                           }
-                        : prefersReducedMotion
-                          ? undefined
-                          : {
-                              rotate: storyWatchRotate,
-                              scale: storyWatchScale,
-                              x: storyWatchX,
-                              y: storyWatchY,
-                            }
                     }
                   />
 
@@ -619,7 +633,7 @@ export function HomePage({
                     aria-hidden="true"
                     className="home-page__story-hotspots"
                     style={
-                      shouldGateStory
+                      shouldAnimateStory
                         ? { opacity: storyHotspotsOpacity, y: storyHotspotsY }
                         : undefined
                     }
@@ -629,18 +643,32 @@ export function HomePage({
                         key={chapter.id}
                         chapter={chapter}
                         isAnimated={!prefersReducedMotion}
-                        progress={storyChapterProgress}
+                        progress={storyProgress}
                         range={editorialChapterRanges[index]}
                       />
                     ))}
                   </motion.div>
+
+                  <div className="home-page__story-badges" aria-hidden="true">
+                    {editorialVolumes.map((chapter, index) => (
+                      <EditorialVolumeBadge
+                        key={chapter.id}
+                        chapter={chapter}
+                        isAnimated={!prefersReducedMotion}
+                        position={index + 1}
+                        progress={storyProgress}
+                        range={editorialChapterRanges[index]}
+                        total={editorialVolumes.length}
+                      />
+                    ))}
+                  </div>
                 </div>
               </motion.div>
 
               <motion.div
                 className="home-page__story-copy"
                 style={
-                  shouldGateStory
+                  shouldAnimateStory
                     ? { opacity: storyCopyOpacity, x: storyCopyX }
                     : prefersReducedMotion
                       ? undefined
@@ -663,7 +691,7 @@ export function HomePage({
                     <motion.span
                       className="home-page__story-rail-progress"
                       style={
-                        shouldGateStory
+                        shouldAnimateStory
                           ? {
                               opacity: storyRailOpacity,
                               scaleY: storyRailScale,
@@ -681,7 +709,7 @@ export function HomePage({
                         key={chapter.id}
                         chapter={chapter}
                         isAnimated={!prefersReducedMotion}
-                        progress={storyChapterProgress}
+                        progress={storyProgress}
                         range={editorialChapterRanges[index]}
                       />
                     ))}
