@@ -1897,8 +1897,11 @@ export function OrdersPage({
 
   const checkoutNotice =
     (location.state as OrdersLocationState | null)?.cartCheckoutMessage ?? null;
+  const trackedOrderId =
+    new URLSearchParams(location.search).get("orderId")?.trim() ?? null;
   const highlightedOrderId =
-    (location.state as OrdersLocationState | null)?.highlightedOrderId ?? null;
+    (location.state as OrdersLocationState | null)?.highlightedOrderId ??
+    trackedOrderId;
 
   useEffect(() => {
     let active = true;

@@ -208,6 +208,16 @@ export interface SalesStatistic {
 - `Product` receives many `Review`.
 - `Admin` reads `SalesStatistic`.
 
+## Support Chat Collections
+
+Realtime support uses Firestore directly from the authenticated frontend client.
+
+- `supportPresence/admin`: current admin availability heartbeat.
+- `supportConversations/{userId}`: one support thread per authenticated user.
+- `supportConversations/{userId}/messages/{messageId}`: saved message history for that thread.
+
+Messages can be sent by `user`, `admin`, or `bot`. When the admin heartbeat is fresh, user messages route as a human conversation. When the heartbeat is stale or offline, the frontend writes the user message and appends a basic bot reply, including product suggestions when the message asks about price or product search.
+
 ## Use Cases Extracted From The Diagram
 
 ### Guest

@@ -1,6 +1,6 @@
 .company-page {
   position: relative;
-  padding: 1.75rem 1rem 7rem;
+  padding: clamp(1.5rem, 2.8vw, 2.5rem) 1rem 7.5rem;
   overflow: clip;
 }
 
@@ -69,14 +69,14 @@
 .company-page__shell {
   position: relative;
   z-index: 1;
-  width: min(100%, 90rem);
+  width: min(100%, 94rem);
   margin: 0 auto;
 }
 
 .company-page__hero {
   display: grid;
-  gap: 1.2rem;
-  padding: clamp(1.45rem, 3vw, 2.9rem) 0 1.85rem;
+  gap: clamp(1.4rem, 2.4vw, 2.6rem);
+  padding: clamp(1.75rem, 4vw, 4.2rem) 0 clamp(2.4rem, 4vw, 4.5rem);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -127,7 +127,7 @@
   display: flex;
   gap: 0.65rem;
   overflow-x: auto;
-  padding-bottom: 0.3rem;
+  padding: 0.1rem 0 0.4rem;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
@@ -168,22 +168,22 @@
 
 .company-page__hero-grid {
   display: grid;
-  gap: 1.5rem;
+  gap: clamp(2rem, 5vw, 5.5rem);
 }
 
 .company-page__hero-copy {
   display: grid;
-  gap: 0.35rem;
+  gap: 0.55rem;
   align-content: start;
 }
 
 .company-page__title {
-  max-width: 52rem;
+  max-width: 56rem;
   margin: 0.7rem 0 0;
   color: var(--color-pearl);
   font-family: var(--font-display);
-  font-size: clamp(2.8rem, 8vw, 5.8rem);
-  line-height: 0.92;
+  font-size: clamp(3rem, 7.3vw, 5.9rem);
+  line-height: 0.95;
   text-wrap: balance;
 }
 
@@ -195,12 +195,15 @@
 .company-page__closing-text {
   color: var(--color-smoke);
   line-height: 1.8;
+  text-align: justify;
+  text-justify: inter-word;
 }
 
 .company-page__lead {
-  max-width: 40rem;
-  margin: 0.95rem 0 0;
-  font-size: 1rem;
+  max-width: 37rem;
+  margin: 1.05rem 0 0;
+  font-size: clamp(1rem, 1.4vw, 1.12rem);
+  line-height: 1.72;
 }
 
 .company-page__hero-actions,
@@ -208,7 +211,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.9rem;
-  margin-top: 0.5rem;
+  margin-top: 0.85rem;
 }
 
 .company-page__button {
@@ -257,7 +260,7 @@
 
 .company-page__hero-signals {
   display: grid;
-  gap: 0.9rem;
+  gap: 1rem;
 }
 
 .company-page__signal,
@@ -273,8 +276,8 @@
 
 .company-page__signal {
   display: grid;
-  gap: 0.45rem;
-  padding: 1rem 1.05rem;
+  gap: 0.55rem;
+  padding: clamp(1.15rem, 2vw, 1.55rem);
 }
 
 .company-page__signal span {
@@ -293,19 +296,20 @@
 }
 
 .company-page__signal strong {
-  font-size: clamp(1.4rem, 2.6vw, 1.9rem);
-  line-height: 1;
+  font-size: clamp(1.35rem, 2.4vw, 2rem);
+  line-height: 1.04;
 }
 
 .company-page__signal p {
   margin: 0;
   font-size: 0.92rem;
+  line-height: 1.65;
 }
 
 .company-page__workspace {
   display: grid;
-  gap: 1.55rem;
-  margin-top: 1.8rem;
+  gap: clamp(2rem, 4vw, 4.4rem);
+  margin-top: clamp(2.6rem, 5vw, 4.6rem);
 }
 
 .company-page__rail {
@@ -314,18 +318,23 @@
 
 .company-page__rail-card {
   display: grid;
-  gap: 1rem;
-  padding: 1.1rem 1rem;
+  gap: 1.35rem;
+  padding: 1.2rem 0 1.2rem 1rem;
+  border-width: 0 0 0 1px;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .company-page__chapter-nav {
   display: grid;
-  gap: 0.55rem;
+  gap: 0.8rem;
 }
 
 .company-page__chapter-link {
   display: grid;
-  gap: 0.25rem;
+  gap: 0.3rem;
   padding-left: 0.95rem;
   border-left: 1px solid rgba(255, 255, 255, 0.08);
   color: rgba(244, 236, 228, 0.72);
@@ -352,8 +361,8 @@
 
 .company-page__spotlight {
   display: grid;
-  gap: 0.65rem;
-  padding-top: 1rem;
+  gap: 0.8rem;
+  padding-top: 1.35rem;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -375,8 +384,8 @@
 
 .company-page__chapter {
   display: grid;
-  gap: 0.8rem;
-  padding: 1.35rem 0 1.55rem;
+  gap: 1.15rem;
+  padding: clamp(2.4rem, 4.4vw, 4.6rem) 0;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -386,7 +395,7 @@
 }
 
 .company-page__chapter-body {
-  max-width: 54rem;
+  max-width: 62rem;
 }
 
 .company-page__chapter-title {
@@ -399,45 +408,50 @@
 }
 
 .company-page__chapter-copy {
-  margin: 0.85rem 0 0;
-  font-size: 1rem;
+  margin: 0;
+  font-size: clamp(1rem, 1.25vw, 1.08rem);
+  line-height: 1.75;
+}
+
+.company-page__chapter-content {
+  display: grid;
+  gap: clamp(1.2rem, 2.4vw, 2rem);
+  margin-top: clamp(1.2rem, 2.2vw, 1.75rem);
 }
 
 .company-page__chapter-list {
   display: grid;
-  gap: 0.65rem;
-  margin: 1rem 0 0;
+  gap: 0.55rem;
+  align-content: start;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .company-page__chapter-list-item {
   position: relative;
-  padding-left: 1.1rem;
-  font-size: 0.98rem;
+  padding: 0.72rem 0 0.72rem 1.05rem;
+  border-left: 1px solid rgba(207, 168, 125, 0.2);
+  color: rgba(244, 236, 228, 0.72);
+  font-size: 0.94rem;
+  line-height: 1.55;
 }
 
 .company-page__chapter-list-item::before {
   content: "";
-  position: absolute;
-  top: 0.84rem;
-  left: 0;
-  width: 0.36rem;
-  height: 0.36rem;
-  border-radius: 50%;
-  background: var(--color-champagne);
+  display: none;
 }
 
 .company-page__closing {
-  margin-top: 2.2rem;
-  padding-top: 1.5rem;
+  margin-top: clamp(2.6rem, 4vw, 4.2rem);
+  padding: clamp(2rem, 4vw, 3.6rem) 0 0;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .company-page__closing-grid {
   display: grid;
-  gap: 1.2rem;
-  margin-top: 0.75rem;
+  gap: 1.5rem;
+  margin-top: 1rem;
 }
 
 .company-page__closing-title {
@@ -448,9 +462,10 @@
 }
 
 .company-page__closing-text {
-  max-width: 42rem;
+  max-width: 38rem;
   margin: 0.9rem 0 0;
   font-size: 1rem;
+  line-height: 1.72;
 }
 
 .company-page--document .company-page__chapter-body {
@@ -483,12 +498,12 @@
 
 @media (min-width: 1024px) {
   .company-page__hero-grid {
-    grid-template-columns: minmax(0, 1.1fr) minmax(18rem, 0.78fr);
-    align-items: end;
+    grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
+    align-items: center;
   }
 
   .company-page__workspace {
-    grid-template-columns: minmax(14rem, 17rem) minmax(0, 1fr);
+    grid-template-columns: minmax(12rem, 15.5rem) minmax(0, 1fr);
     align-items: start;
   }
 
@@ -498,8 +513,13 @@
   }
 
   .company-page__chapter {
-    grid-template-columns: 5.5rem minmax(0, 1fr);
-    gap: 1.2rem;
+    grid-template-columns: minmax(5.5rem, 8rem) minmax(0, 1fr);
+    gap: clamp(1.8rem, 3vw, 3.4rem);
+  }
+
+  .company-page__chapter-content {
+    grid-template-columns: minmax(0, 1fr) minmax(15rem, 0.58fr);
+    align-items: start;
   }
 
   .company-page__closing-grid {
@@ -514,10 +534,10 @@
 
 @media (min-width: 1366px) {
   .company-page__hero {
-    padding-bottom: 2.05rem;
+    padding-bottom: 4.75rem;
   }
 
   .company-page__signal {
-    min-height: 11.25rem;
+    min-height: 10rem;
   }
 }

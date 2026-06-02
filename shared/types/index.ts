@@ -334,6 +334,52 @@ export interface ProductDiscoveryResponse {
   applied: ProductDiscoveryAppliedQuery;
 }
 
+export type SupportConversationMode = "human" | "bot";
+export type SupportConversationStatus = "open" | "closed";
+export type SupportSenderRole = "admin" | "bot" | "user";
+
+export interface FirebaseCustomTokenResponse {
+  customToken: string;
+}
+
+export interface SupportChatProductSuggestion {
+  href: string;
+  image: string;
+  name: string;
+  priceLabel: string;
+  productId: EntityId;
+  type: string;
+}
+
+export interface SupportConversation {
+  assignedAdminEmail: string;
+  assignedAdminId: EntityId | null;
+  assignedAdminName: string;
+  createdAt: ISODateString;
+  id: EntityId;
+  lastMessage: string;
+  lastMessageAt: ISODateString;
+  mode: SupportConversationMode;
+  status: SupportConversationStatus;
+  unreadForAdmin: number;
+  unreadForUser: number;
+  updatedAt: ISODateString;
+  userEmail: string;
+  userId: EntityId;
+  userName: string;
+}
+
+export interface SupportChatMessage {
+  body: string;
+  conversationId: EntityId;
+  createdAt: ISODateString;
+  id: EntityId;
+  senderId: EntityId;
+  senderName: string;
+  senderRole: SupportSenderRole;
+  suggestions: SupportChatProductSuggestion[];
+}
+
 export interface CreateProductPayload {
   categoryId: EntityId;
   brandId: EntityId;

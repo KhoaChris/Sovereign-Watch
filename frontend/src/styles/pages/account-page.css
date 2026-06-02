@@ -586,7 +586,6 @@
 .account-page__aside {
   display: grid;
   gap: 1.25rem;
-  height: -webkit-fill-available;
 }
 
 .account-page__panel--summary,

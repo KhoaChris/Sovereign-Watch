@@ -365,6 +365,8 @@
   color: var(--color-smoke-strong);
   font-size: 1rem;
   line-height: 1.78;
+  text-align: justify;
+  text-justify: inter-word;
 }
 
 .home-page__hero-actions {
@@ -486,6 +488,8 @@
   color: rgba(244, 236, 228, 0.72);
   font-size: 0.94rem;
   line-height: 1.65;
+  text-align: justify;
+  text-justify: inter-word;
 }
 
 .home-page__hero {
@@ -582,6 +586,8 @@
   color: rgba(244, 236, 228, 0.68);
   font-size: 1rem;
   line-height: 1.7;
+  text-align: justify;
+  text-justify: inter-word;
 }
 
 .home-page__hero-spotlight {
@@ -950,6 +956,8 @@
   color: rgba(244, 236, 228, 0.68);
   font-size: 0.96rem;
   line-height: 1.76;
+  text-align: justify;
+  text-justify: inter-word;
 }
 
 .home-page__story-narrative {
@@ -1058,6 +1066,8 @@
   color: rgba(244, 236, 228, 0.64);
   font-size: 0.92rem;
   line-height: 1.62;
+  text-align: justify;
+  text-justify: inter-word;
 }
 
 .home-page__story-meta {

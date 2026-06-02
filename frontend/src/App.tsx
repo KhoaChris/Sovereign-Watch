@@ -52,12 +52,13 @@ const ContactPage = lazy(async () => {
   return { default: module.ContactPage };
 });
 
+const SupportChatWidget = lazy(async () => {
+  const module = await import("./components/SupportChatWidget");
+  return { default: module.SupportChatWidget };
+});
+
 function RouteFallback() {
-  return (
-    <div className="route-fallback">
-      Loading watchroom
-    </div>
-  );
+  return <div className="route-fallback">Loading watchroom</div>;
 }
 
 function App() {
@@ -95,18 +96,8 @@ function App() {
       <main className="app-main">
         <Suspense fallback={<RouteFallback />}>
           <Routes>
-            <Route
-              element={
-                <HomePage products={products} />
-              }
-              path="/"
-            />
-            <Route
-              element={
-                <CollectionPage />
-              }
-              path="/collection"
-            />
+            <Route element={<HomePage products={products} />} path="/" />
+            <Route element={<CollectionPage />} path="/collection" />
             <Route element={<ProductPage />} path="/collection/:productId" />
             <Route element={<OrdersPage />} path="/orders" />
             <Route element={<FavoritesPage />} path="/favorites" />
@@ -114,14 +105,26 @@ function App() {
             <Route element={<AccountPage />} path="/account" />
             <Route element={<BusinessPage pageKey="about" />} path="/about" />
             <Route element={<ContactPage />} path="/contact" />
-            <Route element={<BusinessPage pageKey="client-services" />} path="/client-services" />
-            <Route element={<BusinessPage pageKey="shipping-returns" />} path="/shipping-returns" />
-            <Route element={<BusinessPage pageKey="privacy" />} path="/privacy" />
+            <Route
+              element={<BusinessPage pageKey="client-services" />}
+              path="/client-services"
+            />
+            <Route
+              element={<BusinessPage pageKey="shipping-returns" />}
+              path="/shipping-returns"
+            />
+            <Route
+              element={<BusinessPage pageKey="privacy" />}
+              path="/privacy"
+            />
             <Route element={<BusinessPage pageKey="terms" />} path="/terms" />
           </Routes>
         </Suspense>
       </main>
       <Footer />
+      <Suspense fallback={null}>
+        <SupportChatWidget />
+      </Suspense>
     </div>
   );
 }

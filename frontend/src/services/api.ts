@@ -8,6 +8,7 @@ import type {
   CheckoutCartPayload,
   CheckoutCartResponse,
   FinalizeCheckoutPayload,
+  FirebaseCustomTokenResponse,
   PrepareCheckoutPaymentPayload,
   PrepareCheckoutPaymentResponse,
   CreateProductPayload,
@@ -139,6 +140,9 @@ export const storefrontApi = {
   },
   async getAuthSession(): Promise<AuthSession> {
     return unwrapResponse(api.get<ApiResponse<AuthSession>>("/auth/me"));
+  },
+  async getFirebaseCustomToken(): Promise<FirebaseCustomTokenResponse> {
+    return unwrapResponse(api.post<ApiResponse<FirebaseCustomTokenResponse>>("/auth/firebase-token"));
   },
   async updateProfile(payload: UpdateUserProfilePayload): Promise<AuthSession> {
     return unwrapResponse(api.patch<ApiResponse<AuthSession>>("/auth/me", payload));

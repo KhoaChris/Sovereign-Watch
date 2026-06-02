@@ -13,7 +13,6 @@ import {
   ChevronDown,
   ChevronLeft,
   CreditCard,
-  Landmark,
   LoaderCircle,
   Minus,
   Plus,
@@ -47,8 +46,8 @@ function paymentMethodLabel(method: PaymentMethod): string {
   switch (method) {
     case "card":
       return "Card";
-    case "bank_transfer":
-      return "Bank transfer";
+    // case "bank_transfer":
+    //   return "Bank transfer";
     case "cash_on_delivery":
       return "Cash on delivery";
     case "wallet":
@@ -75,12 +74,12 @@ const PAYMENT_METHODS: Array<{
     description:
       "Settle directly inside the checkout desk with a confirmed card payment.",
   },
-  {
-    value: "bank_transfer",
-    icon: Landmark,
-    description:
-      "Place the reserve first, then complete payment through a quieter transfer desk.",
-  },
+  // {
+  //   value: "bank_transfer",
+  //   icon: Landmark,
+  //   description:
+  //     "Place the reserve first, then complete payment through a quieter transfer desk.",
+  // },
   {
     value: "cash_on_delivery",
     icon: ShieldCheck,
@@ -365,12 +364,13 @@ export function CartPage() {
   } | null>(null);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
 
-  const setActivePaymentController = useCallback((
-    controller: CheckoutPaymentController | null,
-  ): void => {
-    paymentControllerRef.current = controller;
-    setPaymentController(controller);
-  }, []);
+  const setActivePaymentController = useCallback(
+    (controller: CheckoutPaymentController | null): void => {
+      paymentControllerRef.current = controller;
+      setPaymentController(controller);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (checkoutMode === "cart") {
@@ -388,10 +388,7 @@ export function CartPage() {
   }, []);
 
   useEffect(() => {
-    if (
-      checkoutMode !== "checkout" ||
-      !isStripeBackedMethod(paymentMethod)
-    ) {
+    if (checkoutMode !== "checkout" || !isStripeBackedMethod(paymentMethod)) {
       setActivePaymentController(null);
       return;
     }
@@ -1321,7 +1318,9 @@ export function CartPage() {
                                   clientSecret={
                                     preparedStripePayment.clientSecret
                                   }
-                                  onControllerChange={setActivePaymentController}
+                                  onControllerChange={
+                                    setActivePaymentController
+                                  }
                                   paymentMethod={paymentMethod}
                                 />
                               </Elements>

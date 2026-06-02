@@ -5,7 +5,7 @@
 }
 
 .company-page--business .company-page__chapter:hover {
-  transform: translateX(4px);
+  transform: translateY(-2px);
   border-color: rgba(207, 168, 125, 0.18);
 }
 
@@ -14,11 +14,11 @@
 }
 
 .company-page--business.company-page--story .company-page__chapter-title {
-  max-width: 46rem;
+  max-width: 50rem;
 }
 
 .company-page--business.company-page--document .company-page__chapters {
-  max-width: 58rem;
+  max-width: 64rem;
 }
 
 .company-page--business.company-page--document .company-page__chapter-title {
@@ -32,5 +32,9 @@
 @media (max-width: 1023px) {
   .company-page--business .company-page__rail {
     order: 2;
+  }
+
+  .company-page--business .company-page__chapter:hover {
+    transform: none;
   }
 }

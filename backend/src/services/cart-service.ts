@@ -13,8 +13,10 @@ import type {
 } from "../shared";
 import { nowIsoString } from "../utils/dates";
 import { createEntityId } from "../utils/ids";
+import { sendOrderConfirmationEmail } from "./email-service";
 import { findVariantById } from "./product-service";
 import { createOrder, updateOrder } from "./order-service";
+import { getUserProfile } from "./user-service";
 
 const CARTS_COLLECTION = "carts";
 
@@ -233,6 +235,11 @@ export async function checkoutCartRecord(
   });
 
   const clearedCart = await clearCartRecord(userId);
+  const profile = await getUserProfile(userId);
+
+  if (profile?.email) {
+    await notifyOrderConfirmation(order, profile.email, profile.fullName);
+  }
 
   return {
     cart: clearedCart,
@@ -299,6 +306,25 @@ async function createCheckoutOrder(
   };
 }
 
+async function notifyOrderConfirmation(
+  order: CheckoutCartResponse["order"],
+  customerEmail: string,
+  customerName: string,
+): Promise<void> {
+  try {
+    await sendOrderConfirmationEmail({
+      customerEmail,
+      customerName,
+      order,
+    });
+  } catch (error) {
+    console.error(
+      `Order confirmation email failed for ${order.orderNumber}:`,
+      error,
+    );
+  }
+}
+
 function isStripePaymentMethod(
   method: FinalizeCheckoutPayload["paymentMethod"],
 ): method is "card" | "wallet" {
@@ -316,7 +342,13 @@ export async function finalizeCheckout(
   }
 
   if (!isStripePaymentMethod(payload.paymentMethod)) {
-    return createCheckoutOrder(userId, payload);
+    const result = await createCheckoutOrder(userId, payload);
+    await notifyOrderConfirmation(
+      result.order,
+      payload.details.email,
+      payload.details.fullName,
+    );
+    return result;
   }
 
   if (!payload.paymentIntentId) {
@@ -347,6 +379,12 @@ export async function finalizeCheckout(
   if (!paidOrder) {
     throw new Error("The order was created, but payment sync could not finish.");
   }
+
+  await notifyOrderConfirmation(
+    paidOrder,
+    payload.details.email,
+    payload.details.fullName,
+  );
 
   return {
     ...result,

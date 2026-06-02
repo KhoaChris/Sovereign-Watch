@@ -1582,7 +1582,7 @@
   }
 
   .collection-page__card-title {
-    font-size: clamp(2.15rem, 3.6vw, 3.8rem);
+    font-size: clamp(2.15rem, 2.6vw, 3.8rem);
   }
 }
 

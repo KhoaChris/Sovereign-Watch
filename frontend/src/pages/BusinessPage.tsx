@@ -196,20 +196,25 @@ export function BusinessPage({ pageKey }: { pageKey: BusinessPageKey }) {
                   <h2 className="company-page__chapter-title">
                     {section.title}
                   </h2>
-                  <p className="company-page__chapter-copy">{section.copy}</p>
 
-                  {section.bullets ? (
-                    <ul className="company-page__chapter-list">
-                      {section.bullets.map((bullet) => (
-                        <li
-                          key={bullet}
-                          className="company-page__chapter-list-item"
-                        >
-                          {bullet}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
+                  <div className="company-page__chapter-content">
+                    <p className="company-page__chapter-copy">
+                      {section.copy}
+                    </p>
+
+                    {section.bullets ? (
+                      <ul className="company-page__chapter-list">
+                        {section.bullets.map((bullet) => (
+                          <li
+                            key={bullet}
+                            className="company-page__chapter-list-item"
+                          >
+                            {bullet}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
                 </div>
               </motion.section>
             ))}

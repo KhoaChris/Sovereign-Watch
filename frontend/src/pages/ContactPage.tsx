@@ -16,27 +16,27 @@ const contactItems = [
   {
     icon: Mail,
     label: "Email",
-    note: "Best for watch inquiries, reserve questions, and order follow-up.",
+    note: "For watch, reserve, and order questions.",
     value: COMPANY_SOVEREIGN_EMAIL,
     href: `mailto:${COMPANY_SOVEREIGN_EMAIL}`,
   },
   {
     icon: Phone,
     label: "Phone",
-    note: "Best for urgent questions during desk hours.",
+    note: "For urgent desk-hour questions.",
     value: COMPANY_PHONE,
     href: `tel:${COMPANY_PHONE.replace(/\s+/g, "")}`,
   },
   {
     icon: MapPin,
     label: "Location",
-    note: "Private client desk for showroom and shipping coordination.",
+    note: "Private desk for showroom and shipping coordination.",
     value: "District 1, Ho Chi Minh City",
   },
   {
     icon: Clock3,
     label: "Hours",
-    note: "Most replies start during the active desk window.",
+    note: "Replies start during desk hours.",
     value: "Monday to Saturday, 09:00-18:30",
   },
 ];
@@ -225,8 +225,7 @@ export function ContactPage() {
               <p className="company-page__eyebrow">Contact</p>
               <h1 className="company-page__title">Client support center</h1>
               <p className="company-page__lead">
-                Ask about a watch, a reserve, delivery, or after-sales support.
-                We keep the conversation direct and personal.
+                Ask about a watch, reserve, delivery, or after-sales support.
               </p>
 
               <div className="company-page__hero-actions">
@@ -249,14 +248,12 @@ export function ContactPage() {
               <article className="company-page__signal">
                 <span>Desk hours</span>
                 <strong>Mon-Sat / 09:00-18:30</strong>
-                <p>Most replies begin during the active desk window.</p>
+                <p>Most replies begin during desk hours.</p>
               </article>
               <article className="company-page__signal">
                 <span>Use cases</span>
                 <strong>Watch, reserve, delivery, support</strong>
-                <p>
-                  One channel for pre-purchase questions and after-sales help.
-                </p>
+                <p>One channel before and after purchase.</p>
               </article>
             </div>
           </div>
@@ -354,8 +351,7 @@ export function ContactPage() {
                       Add the watch or order
                     </h2>
                     <p className="contact-page__step-copy">
-                      Include the watch name, SKU, or order number if your
-                      message is tied to something specific.
+                      Include the watch name, SKU, or order number.
                     </p>
                   </div>
                 </div>
@@ -364,8 +360,7 @@ export function ContactPage() {
                   <div>
                     <h2 className="contact-page__step-title">Send the email</h2>
                     <p className="contact-page__step-copy">
-                      We prepare a prefilled draft in your mail app so the desk
-                      gets the full context.
+                      We open a prefilled draft with the key details.
                     </p>
                   </div>
                 </div>
@@ -390,8 +385,7 @@ export function ContactPage() {
               <p className="contact-page__section-label">Contact form</p>
               <h2 className="contact-page__form-title">Send a message.</h2>
               <p className="contact-page__form-copy">
-                Fill in the details below and we will open a prefilled email
-                draft for you.
+                Add the key details and open a prefilled email draft.
               </p>
             </div>
 
@@ -415,7 +409,7 @@ export function ContactPage() {
                     value={form.name}
                   />
                   <span className="contact-page__field-help">
-                    {errors.name ?? "Who we should reply to."}
+                    {errors.name ?? "Reply name."}
                   </span>
                 </label>
 
@@ -433,7 +427,7 @@ export function ContactPage() {
                     value={form.email}
                   />
                   <span className="contact-page__field-help">
-                    {errors.email ?? "Where we should send the reply."}
+                    {errors.email ?? "Reply email."}
                   </span>
                 </label>
 
@@ -458,7 +452,7 @@ export function ContactPage() {
                     ))}
                   </select>
                   <span className="contact-page__field-help">
-                    {errors.topic ?? "Helps route your message faster."}
+                    {errors.topic ?? "Routes the message."}
                   </span>
                 </label>
 
@@ -472,13 +466,12 @@ export function ContactPage() {
                     onChange={(event) =>
                       updateField("reference", event.target.value)
                     }
-                    placeholder="Optional watch name, SKU, or order number"
+                    placeholder="Watch name, SKU, or order number"
                     type="text"
                     value={form.reference}
                   />
                   <span className="contact-page__field-help">
-                    Optional, but useful if the message is tied to a specific
-                    piece or order.
+                    Optional reference.
                   </span>
                 </label>
               </div>
@@ -497,8 +490,7 @@ export function ContactPage() {
                   value={form.message}
                 />
                 <span className="contact-page__field-help">
-                  {errors.message ??
-                    "A few clear details help us reply faster."}
+                  {errors.message ?? "Short context is enough."}
                 </span>
               </label>
 
@@ -520,7 +512,7 @@ export function ContactPage() {
               </div>
 
               <p className="contact-page__form-note">
-                If no mail app opens, you can still reach us at{" "}
+                No mail app? Email{" "}
                 <a href={`mailto:${COMPANY_SOVEREIGN_EMAIL}`}>
                   {COMPANY_SOVEREIGN_EMAIL}
                 </a>
