@@ -30,10 +30,64 @@ import type {
   UpdateUserProfilePayload,
 } from "../shared";
 
+const LOCAL_API_BASE_URL = "http://localhost:4000/api";
+
+function getApiBaseUrl(): string {
+  const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
+
+  if (configuredBaseUrl) {
+    return configuredBaseUrl;
+  }
+
+  if (typeof window !== "undefined") {
+    const isLocalHost =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1" ||
+      window.location.hostname === "::1";
+
+    if (isLocalHost) {
+      return LOCAL_API_BASE_URL;
+    }
+  }
+
+  return "/api";
+}
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL,
+  baseURL: getApiBaseUrl(),
   timeout: 10000,
 });
+
+function resolveApiRequestUrl(path: string, baseUrl = api.defaults.baseURL ?? ""): string {
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
+  if (!baseUrl) {
+    return path;
+  }
+
+  if (/^https?:\/\//i.test(baseUrl)) {
+    return new URL(path, `${baseUrl.replace(/\/$/, "")}/`).toString();
+  }
+
+  return `${baseUrl.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
+}
+
+function toApiRequestError(error: unknown, path: string): Error {
+  if (!axios.isAxiosError(error)) {
+    return error instanceof Error
+      ? error
+      : new Error("Unable to connect to the API.");
+  }
+
+  const method = error.config?.method?.toUpperCase() ?? "REQUEST";
+  const status = error.response?.status;
+  const url = resolveApiRequestUrl(error.config?.url ?? path, error.config?.baseURL);
+  const statusLabel = status ? `status ${status}` : "network error";
+
+  return new Error(`${method} ${url} failed with ${statusLabel}.`);
+}
 
 async function unwrapResponse<T>(request: Promise<{ data: ApiResponse<T> }>): Promise<T> {
   const response = await request;
@@ -142,7 +196,13 @@ export const storefrontApi = {
     return unwrapResponse(api.get<ApiResponse<AuthSession>>("/auth/me"));
   },
   async getFirebaseCustomToken(): Promise<FirebaseCustomTokenResponse> {
-    return unwrapResponse(api.post<ApiResponse<FirebaseCustomTokenResponse>>("/auth/firebase-token"));
+    const path = "/auth/firebase-token";
+
+    try {
+      return await unwrapResponse(api.post<ApiResponse<FirebaseCustomTokenResponse>>(path));
+    } catch (error) {
+      throw toApiRequestError(error, path);
+    }
   },
   async updateProfile(payload: UpdateUserProfilePayload): Promise<AuthSession> {
     return unwrapResponse(api.patch<ApiResponse<AuthSession>>("/auth/me", payload));

@@ -115,6 +115,8 @@ interface AdminPresetOption {
   label: string;
 }
 
+type PaginationToken = number | "ellipsis";
+
 const PRODUCT_IMAGE_ACCEPT = ".png,.jpg,.jpeg,image/png,image/jpeg";
 const PRODUCT_IMAGE_MAX_BYTES = 4 * 1024 * 1024;
 const PRODUCT_IMAGE_TYPES = new Set(["image/png", "image/jpeg"]);
@@ -555,6 +557,7 @@ const SHIPPING_STATUS_OPTIONS: ShippingStatus[] = [
   "delivered",
   "returned",
 ];
+const SALES_LEDGER_PAGE_SIZE_OPTIONS = [5, 10, 20, 50] as const;
 
 const ADMIN_SECTIONS = [
   {
@@ -1046,6 +1049,96 @@ function buildOrderUnitSummary(order: OrderRecord): string {
   const totalUnits = order.items.reduce((sum, item) => sum + item.quantity, 0);
 
   return `${totalUnits} ${totalUnits === 1 ? "piece" : "pieces"}`;
+}
+
+function normalizeSalesLedgerSearch(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase();
+}
+
+function buildSalesLedgerSearchText(
+  order: OrderRecord,
+  variantLookup: Map<string, VariantLookupEntry>,
+): string {
+  const shippingSummary = splitShippingAddress(order.shippingAddress);
+
+  return [
+    order.id,
+    order.customerId,
+    order.orderNumber,
+    order.shippingAddress,
+    shippingSummary.recipient,
+    shippingSummary.detail,
+    order.totalAmount,
+    formatCurrency(order.totalAmount),
+    formatDateTime(order.createdAt),
+    order.status,
+    formatStatusLabel(order.status),
+    order.payment?.status,
+    formatStatusLabel(order.payment?.status),
+    order.payment?.method,
+    formatStatusLabel(order.payment?.method),
+    order.shipping?.status,
+    formatStatusLabel(order.shipping?.status),
+    order.shipping?.courierName,
+    order.shipping?.trackingNumber,
+    buildOrderUnitSummary(order),
+    buildOrderItemSummary(order, variantLookup),
+  ]
+    .filter((value) => value !== undefined && value !== null)
+    .join(" ");
+}
+
+function orderMatchesSalesLedgerSearch(
+  order: OrderRecord,
+  query: string,
+  variantLookup: Map<string, VariantLookupEntry>,
+): boolean {
+  const normalizedQuery = normalizeSalesLedgerSearch(query.trim());
+
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  return normalizeSalesLedgerSearch(
+    buildSalesLedgerSearchText(order, variantLookup),
+  ).includes(normalizedQuery);
+}
+
+function buildPaginationTokens(
+  currentPage: number,
+  totalPages: number,
+): PaginationToken[] {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  const pageSet = new Set([
+    1,
+    totalPages,
+    currentPage,
+    currentPage - 1,
+    currentPage + 1,
+  ]);
+
+  const pages = Array.from(pageSet)
+    .filter((page) => page >= 1 && page <= totalPages)
+    .sort((left, right) => left - right);
+  const tokens: PaginationToken[] = [];
+
+  pages.forEach((page, index) => {
+    const previousPage = pages[index - 1];
+
+    if (previousPage !== undefined && page - previousPage > 1) {
+      tokens.push("ellipsis");
+    }
+
+    tokens.push(page);
+  });
+
+  return tokens;
 }
 
 function splitShippingAddress(value: string): {
@@ -1887,10 +1980,14 @@ export function OrdersPage({
   const [selectedImageNames, setSelectedImageNames] = useState<string[]>([]);
   const [uploadingImages, setUploadingImages] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [salesLedgerSearch, setSalesLedgerSearch] = useState("");
+  const [salesLedgerPage, setSalesLedgerPage] = useState(1);
+  const [salesLedgerPageSize, setSalesLedgerPageSize] = useState(10);
   const [productSearch, setProductSearch] = useState("");
   const [reviewSearch, setReviewSearch] = useState("");
   const [reviewSort, setReviewSort] = useState<AdminReviewSortOption>("newest");
   const [pendingReviewId, setPendingReviewId] = useState<string | null>(null);
+  const deferredSalesLedgerSearch = useDeferredValue(salesLedgerSearch);
   const deferredProductSearch = useDeferredValue(productSearch);
   const deferredReviewSearch = useDeferredValue(reviewSearch);
   const [error, setError] = useState<string | null>(null);
@@ -2002,6 +2099,47 @@ export function OrdersPage({
   const salesSeries = useMemo(() => buildSalesSeries(orders), [orders]);
   const statusSegments = useMemo(() => buildStatusSegments(orders), [orders]);
   const variantLookup = useMemo(() => buildVariantLookup(products), [products]);
+  const filteredSalesLedgerOrders = useMemo(() => {
+    return sortedOrders.filter((order) =>
+      orderMatchesSalesLedgerSearch(
+        order,
+        deferredSalesLedgerSearch,
+        variantLookup,
+      ),
+    );
+  }, [deferredSalesLedgerSearch, sortedOrders, variantLookup]);
+  const salesLedgerTotalPages = Math.max(
+    1,
+    Math.ceil(filteredSalesLedgerOrders.length / salesLedgerPageSize),
+  );
+  const activeSalesLedgerPage = Math.min(
+    salesLedgerPage,
+    salesLedgerTotalPages,
+  );
+  const salesLedgerStartIndex =
+    (activeSalesLedgerPage - 1) * salesLedgerPageSize;
+  const pagedSalesLedgerOrders = useMemo(() => {
+    return filteredSalesLedgerOrders.slice(
+      salesLedgerStartIndex,
+      salesLedgerStartIndex + salesLedgerPageSize,
+    );
+  }, [filteredSalesLedgerOrders, salesLedgerPageSize, salesLedgerStartIndex]);
+  const salesLedgerRangeStart =
+    filteredSalesLedgerOrders.length === 0 ? 0 : salesLedgerStartIndex + 1;
+  const salesLedgerRangeEnd = Math.min(
+    salesLedgerStartIndex + salesLedgerPageSize,
+    filteredSalesLedgerOrders.length,
+  );
+  const salesLedgerPaginationTokens = useMemo(
+    () => buildPaginationTokens(activeSalesLedgerPage, salesLedgerTotalPages),
+    [activeSalesLedgerPage, salesLedgerTotalPages],
+  );
+
+  useEffect(() => {
+    setSalesLedgerPage((currentPage) =>
+      Math.min(Math.max(currentPage, 1), salesLedgerTotalPages),
+    );
+  }, [salesLedgerTotalPages]);
 
   const filteredProducts = useMemo(() => {
     const query = deferredProductSearch.trim().toLowerCase();
@@ -2941,7 +3079,8 @@ export function OrdersPage({
                     <h2>Order control and fulfillment updates</h2>
                   </div>
                   <span className="operations-panel__meta">
-                    {orders.length} reservations synced
+                    {filteredSalesLedgerOrders.length} of {orders.length} reservations
+                    visible
                   </span>
                 </div>
 
@@ -2951,8 +3090,65 @@ export function OrdersPage({
                     ledger here.
                   </div>
                 ) : (
-                  <div className="operations-orders-list">
-                    {orders.map((order) => {
+                  <>
+                    <div className="operations-ledger-toolbar">
+                      <label className="operations-search operations-search--ledger">
+                        <Search size={16} />
+                        <input
+                          onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                            setSalesLedgerSearch(event.target.value);
+                            setSalesLedgerPage(1);
+                          }}
+                          placeholder="Search order, customer, phone, item, status, payment, tracking"
+                          type="search"
+                          value={salesLedgerSearch}
+                        />
+                      </label>
+
+                      <div className="operations-ledger-toolbar__controls">
+                        <span className="operations-ledger-toolbar__range">
+                          Showing {salesLedgerRangeStart}-{salesLedgerRangeEnd} of{" "}
+                          {filteredSalesLedgerOrders.length}
+                        </span>
+                        <label className="operations-ledger-size">
+                          <span>Rows</span>
+                          <select
+                            onChange={(event) => {
+                              setSalesLedgerPageSize(Number(event.target.value));
+                              setSalesLedgerPage(1);
+                            }}
+                            value={salesLedgerPageSize}
+                          >
+                            {SALES_LEDGER_PAGE_SIZE_OPTIONS.map((size) => (
+                              <option key={size} value={size}>
+                                {size}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        {salesLedgerSearch.trim() ? (
+                          <button
+                            className="operations-ledger-clear"
+                            onClick={() => {
+                              setSalesLedgerSearch("");
+                              setSalesLedgerPage(1);
+                            }}
+                            type="button"
+                          >
+                            Clear
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {filteredSalesLedgerOrders.length === 0 ? (
+                      <div className="orders-page__empty-state">
+                        No orders match this ledger search. Try an order number,
+                        customer name, phone, product SKU, or tracking code.
+                      </div>
+                    ) : (
+                      <div className="operations-orders-list">
+                        {pagedSalesLedgerOrders.map((order) => {
                       const draft = getDraft(order);
                       const itemSummary = buildOrderItemSummary(
                         order,
@@ -3153,8 +3349,71 @@ export function OrdersPage({
                           </div>
                         </motion.article>
                       );
-                    })}
-                  </div>
+                        })}
+                      </div>
+                    )}
+
+                    <div
+                      aria-label="Sales ledger pagination"
+                      className="operations-pagination"
+                    >
+                      <p>
+                        Page {activeSalesLedgerPage} of {salesLedgerTotalPages}
+                      </p>
+                      <div className="operations-pagination__controls">
+                        <button
+                          disabled={activeSalesLedgerPage <= 1}
+                          onClick={() =>
+                            setSalesLedgerPage((currentPage) =>
+                              Math.max(1, currentPage - 1),
+                            )
+                          }
+                          type="button"
+                        >
+                          Previous
+                        </button>
+                        {salesLedgerPaginationTokens.map((token, index) =>
+                          token === "ellipsis" ? (
+                            <span
+                              className="operations-pagination__ellipsis"
+                              key={`sales-ledger-ellipsis-${index}`}
+                            >
+                              ...
+                            </span>
+                          ) : (
+                            <button
+                              aria-current={
+                                token === activeSalesLedgerPage
+                                  ? "page"
+                                  : undefined
+                              }
+                              className={
+                                token === activeSalesLedgerPage
+                                  ? "operations-pagination__page operations-pagination__page--active"
+                                  : "operations-pagination__page"
+                              }
+                              key={token}
+                              onClick={() => setSalesLedgerPage(token)}
+                              type="button"
+                            >
+                              {token}
+                            </button>
+                          ),
+                        )}
+                        <button
+                          disabled={activeSalesLedgerPage >= salesLedgerTotalPages}
+                          onClick={() =>
+                            setSalesLedgerPage((currentPage) =>
+                              Math.min(salesLedgerTotalPages, currentPage + 1),
+                            )
+                          }
+                          type="button"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  </>
                 )}
               </section>
 

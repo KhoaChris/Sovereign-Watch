@@ -1,8 +1,11 @@
 import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app";
 import {
+  browserSessionPersistence,
   getAuth,
+  getIdTokenResult,
   signInWithCustomToken,
   signOut,
+  setPersistence,
   type Auth,
 } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
@@ -16,6 +19,8 @@ interface FirebaseClientConfig {
   projectId: string;
   storageBucket: string;
 }
+
+let authPersistencePromise: Promise<void> | null = null;
 
 function readFirebaseClientConfig(): FirebaseClientConfig {
   const config: FirebaseClientConfig = {
@@ -58,14 +63,24 @@ export function getFirebaseClientDb(): Firestore {
 export async function ensureFirebaseClientSession(
   customToken: string,
   uid: string,
+  expectedRole?: string,
 ): Promise<void> {
   const auth = getFirebaseClientAuth();
 
-  if (auth.currentUser?.uid === uid) {
-    return;
+  authPersistencePromise ??= setPersistence(auth, browserSessionPersistence);
+  await authPersistencePromise;
+
+  const credential = await signInWithCustomToken(auth, customToken);
+
+  if (credential.user.uid !== uid) {
+    throw new Error("Live chat session does not match the signed-in account.");
   }
 
-  await signInWithCustomToken(auth, customToken);
+  const token = await getIdTokenResult(credential.user, true);
+
+  if (expectedRole && token.claims.role !== expectedRole) {
+    throw new Error("Live chat session permissions are not ready yet.");
+  }
 }
 
 export async function clearFirebaseClientSession(): Promise<void> {

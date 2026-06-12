@@ -251,6 +251,30 @@ function availabilityForProduct(product: ProductRecord): ProductAvailabilityFilt
   return "available";
 }
 
+function productSearchHaystack(product: ProductRecord): string {
+  const variantHaystack = product.variants
+    .map(
+      (variant) =>
+        `${variant.sku} ${variant.color} ${variant.size} ${formatProductSize(
+          variant.size,
+        )}`,
+    )
+    .join(" ");
+
+  return [
+    product.name,
+    product.description,
+    product.type,
+    product.brandId,
+    brandLabel(product),
+    product.categoryId,
+    categoryLabel(product),
+    variantHaystack,
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
 function normalizeDiscoveryQuery(query: ProductDiscoveryQuery): ProductDiscoveryAppliedQuery {
   return {
     availability: query.availability ?? DEFAULT_DISCOVERY_AVAILABILITY,
@@ -288,15 +312,7 @@ function matchesProductDiscoveryQuery(
   }
 
   if (query.search) {
-    const variantHaystack = product.variants
-      .map(
-        (variant) =>
-          `${variant.sku} ${variant.color} ${variant.size} ${formatProductSize(
-            variant.size,
-          )}`,
-      )
-      .join(" ");
-    const haystack = `${product.name} ${product.description} ${product.type} ${variantHaystack}`.toLowerCase();
+    const haystack = productSearchHaystack(product);
 
     if (!haystack.includes(query.search.toLowerCase())) {
       return false;
@@ -443,7 +459,7 @@ function applyFilters(products: ProductRecord[], filters: ProductFilters): Produ
 
     if (filters.search) {
       const searchTerm = filters.search.trim().toLowerCase();
-      const haystack = `${product.name} ${product.description} ${product.type}`.toLowerCase();
+      const haystack = productSearchHaystack(product);
 
       if (!haystack.includes(searchTerm)) {
         return false;

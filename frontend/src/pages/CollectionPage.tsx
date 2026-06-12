@@ -66,6 +66,15 @@ interface CollectionCardImagePresentation {
   shiftY: number;
 }
 
+type CollectionPaginationToken = number | "ellipsis";
+
+interface CollectionPaginationState {
+  page: number;
+  requestKey: string;
+}
+
+const COLLECTION_PAGE_SIZE = 10;
+const EMPTY_COLLECTION_ITEMS: ProductRecord[] = [];
 const DEFAULT_COLLECTION_CARD_IMAGE_PRESENTATION: CollectionCardImagePresentation =
   {
     scale: 1,
@@ -80,6 +89,39 @@ const collectionCardImagePresentationCache = new Map<
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function buildCollectionPaginationTokens(
+  currentPage: number,
+  totalPages: number,
+): CollectionPaginationToken[] {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  const pageSet = new Set([
+    1,
+    totalPages,
+    currentPage,
+    currentPage - 1,
+    currentPage + 1,
+  ]);
+  const pages = Array.from(pageSet)
+    .filter((page) => page >= 1 && page <= totalPages)
+    .sort((left, right) => left - right);
+  const tokens: CollectionPaginationToken[] = [];
+
+  pages.forEach((page, index) => {
+    const previousPage = pages[index - 1];
+
+    if (previousPage !== undefined && page - previousPage > 1) {
+      tokens.push("ellipsis");
+    }
+
+    tokens.push(page);
+  });
+
+  return tokens;
 }
 
 function fallbackCardImagePresentation(
@@ -555,7 +597,13 @@ export function CollectionPage() {
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [resolvedRequestKey, setResolvedRequestKey] = useState("");
+  const [collectionPagination, setCollectionPagination] =
+    useState<CollectionPaginationState>({
+      page: 1,
+      requestKey: "",
+    });
   const heroRef = useRef<HTMLElement | null>(null);
+  const collectionResultsRef = useRef<HTMLDivElement | null>(null);
 
   const prefersReducedMotion = useReducedMotion();
   const heroPointerX = useMotionValue(0);
@@ -713,6 +761,10 @@ export function CollectionPage() {
     () => JSON.stringify({ query: currentQuery, reloadKey }),
     [currentQuery, reloadKey],
   );
+  const collectionPage =
+    collectionPagination.requestKey === currentRequestKey
+      ? collectionPagination.page
+      : 1;
   const loading = resolvedRequestKey !== currentRequestKey;
   const activeError = resolvedRequestKey === currentRequestKey ? error : null;
 
@@ -762,11 +814,54 @@ export function CollectionPage() {
     };
   }, [currentQuery, currentRequestKey]);
 
-  const collectionItems = discovery?.items ?? [];
+  const collectionItems = discovery?.items ?? EMPTY_COLLECTION_ITEMS;
+  const collectionTotalPages = Math.max(
+    1,
+    Math.ceil(collectionItems.length / COLLECTION_PAGE_SIZE),
+  );
+  const activeCollectionPage = Math.min(collectionPage, collectionTotalPages);
+  const collectionStartIndex =
+    (activeCollectionPage - 1) * COLLECTION_PAGE_SIZE;
+  const pagedCollectionItems = useMemo(
+    () =>
+      collectionItems.slice(
+        collectionStartIndex,
+        collectionStartIndex + COLLECTION_PAGE_SIZE,
+      ),
+    [collectionItems, collectionStartIndex],
+  );
+  const collectionRangeStart =
+    collectionItems.length === 0 ? 0 : collectionStartIndex + 1;
+  const collectionRangeEnd = Math.min(
+    collectionStartIndex + COLLECTION_PAGE_SIZE,
+    collectionItems.length,
+  );
+  const collectionPaginationTokens = useMemo(
+    () =>
+      buildCollectionPaginationTokens(
+        activeCollectionPage,
+        collectionTotalPages,
+      ),
+    [activeCollectionPage, collectionTotalPages],
+  );
   const activeSummary = activeFilterSummary(discovery, currentQuery);
   const hasActiveFilters = activeSummary.length > 0;
   const currentPriceMin = searchParams.get("priceMin") ?? "";
   const currentPriceMax = searchParams.get("priceMax") ?? "";
+
+  function handleCollectionPageChange(nextPage: number): void {
+    setCollectionPagination({
+      page: Math.min(Math.max(nextPage, 1), collectionTotalPages),
+      requestKey: currentRequestKey,
+    });
+
+    window.requestAnimationFrame(() => {
+      collectionResultsRef.current?.scrollIntoView({
+        behavior: prefersReducedMotion ? "auto" : "smooth",
+        block: "start",
+      });
+    });
+  }
 
   function applyQueryPatch(
     updates: Record<string, string | null | undefined>,
@@ -1128,7 +1223,7 @@ export function CollectionPage() {
           </div>
         </motion.section>
 
-        <div className="collection-page__content">
+        <div className="collection-page__content" ref={collectionResultsRef}>
           {activeError ? (
             <div className="collection-page__notice collection-page__notice--error">
               <div className="collection-page__notice-copy">
@@ -1181,15 +1276,89 @@ export function CollectionPage() {
           !loading &&
           discovery &&
           discovery.items.length > 0 ? (
-            <section className="collection-page__cards">
-              {collectionItems.map((product, index) => (
-                <CollectionProductCard
-                  key={product.id}
-                  index={index}
-                  product={product}
-                />
-              ))}
-            </section>
+            <>
+              <section className="collection-page__cards">
+                {pagedCollectionItems.map((product, index) => (
+                  <CollectionProductCard
+                    key={product.id}
+                    index={collectionStartIndex + index}
+                    product={product}
+                  />
+                ))}
+              </section>
+
+              <div className="collection-page__results-footer">
+                <div
+                  aria-live="polite"
+                  className="collection-page__results-footer-copy"
+                >
+                  <span>
+                    Showing {collectionRangeStart}-{collectionRangeEnd} of{" "}
+                    {collectionItems.length}
+                  </span>
+                  <strong>{COLLECTION_PAGE_SIZE} references per page</strong>
+                </div>
+
+                {collectionItems.length > COLLECTION_PAGE_SIZE ? (
+                  <nav
+                    aria-label="Marketplace pagination"
+                    className="collection-page__pagination"
+                  >
+                    <p>
+                      Page {activeCollectionPage} of {collectionTotalPages}
+                    </p>
+                    <div className="collection-page__pagination-controls">
+                      <button
+                        disabled={activeCollectionPage <= 1}
+                        onClick={() =>
+                          handleCollectionPageChange(activeCollectionPage - 1)
+                        }
+                        type="button"
+                      >
+                        Previous
+                      </button>
+                      {collectionPaginationTokens.map((token, index) =>
+                        token === "ellipsis" ? (
+                          <span
+                            className="collection-page__pagination-ellipsis"
+                            key={`collection-pagination-ellipsis-${index}`}
+                          >
+                            ...
+                          </span>
+                        ) : (
+                          <button
+                            aria-current={
+                              token === activeCollectionPage
+                                ? "page"
+                                : undefined
+                            }
+                            className={
+                              token === activeCollectionPage
+                                ? "collection-page__pagination-page collection-page__pagination-page--active"
+                                : "collection-page__pagination-page"
+                            }
+                            key={token}
+                            onClick={() => handleCollectionPageChange(token)}
+                            type="button"
+                          >
+                            {token}
+                          </button>
+                        ),
+                      )}
+                      <button
+                        disabled={activeCollectionPage >= collectionTotalPages}
+                        onClick={() =>
+                          handleCollectionPageChange(activeCollectionPage + 1)
+                        }
+                        type="button"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </nav>
+                ) : null}
+              </div>
+            </>
           ) : null}
         </div>
       </div>

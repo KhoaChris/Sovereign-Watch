@@ -1823,9 +1823,172 @@
   gap: 0.75rem;
 }
 
+.operations-ledger-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.065);
+  border-radius: 1.15rem;
+  background:
+    linear-gradient(135deg, rgba(215, 177, 126, 0.055), transparent 42%),
+    rgba(255, 255, 255, 0.026);
+}
+
+.operations-search--ledger {
+  min-width: 0;
+}
+
+.operations-search--ledger input {
+  min-width: 0;
+}
+
+.operations-ledger-toolbar__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.operations-ledger-toolbar__range {
+  color: rgba(244, 236, 228, 0.6);
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.operations-ledger-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: rgba(244, 236, 228, 0.58);
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.operations-ledger-size select {
+  width: auto;
+  min-width: 4.35rem;
+  padding: 0.55rem 0.72rem;
+  border-radius: 0.82rem;
+  font-size: 0.78rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.operations-ledger-clear {
+  min-height: 2.28rem;
+  padding: 0.56rem 0.82rem;
+  border: 1px solid rgba(215, 177, 126, 0.18);
+  border-radius: 999px;
+  background: rgba(215, 177, 126, 0.07);
+  color: var(--color-champagne-bright);
+  font: inherit;
+  font-size: 0.66rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast),
+    background-color var(--motion-fast),
+    transform var(--motion-fast);
+}
+
+.operations-ledger-clear:hover {
+  transform: translateY(-1px);
+  border-color: rgba(215, 177, 126, 0.32);
+  background: rgba(215, 177, 126, 0.12);
+}
+
 .operations-orders-list {
   display: grid;
   gap: 1rem;
+}
+
+.operations-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.065);
+  border-radius: 1.15rem;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.045), transparent 48%),
+    rgba(255, 255, 255, 0.026);
+}
+
+.operations-pagination p {
+  margin: 0;
+  color: rgba(244, 236, 228, 0.62);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.operations-pagination__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.operations-pagination__controls button,
+.operations-pagination__ellipsis {
+  display: inline-grid;
+  place-items: center;
+  min-width: 2.35rem;
+  min-height: 2.35rem;
+  padding: 0.5rem 0.72rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.82rem;
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(244, 236, 228, 0.72);
+  font: inherit;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.operations-pagination__controls button {
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast),
+    background-color var(--motion-fast),
+    color var(--motion-fast),
+    transform var(--motion-fast);
+}
+
+.operations-pagination__controls button:not(.operations-pagination__page) {
+  min-width: 5.3rem;
+  padding-inline: 0.95rem;
+  border-radius: 999px;
+}
+
+.operations-pagination__controls button:hover:not(:disabled),
+.operations-pagination__page--active {
+  transform: translateY(-1px);
+  border-color: rgba(215, 177, 126, 0.3);
+  background: rgba(215, 177, 126, 0.1);
+  color: var(--color-pearl);
+}
+
+.operations-pagination__controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.operations-pagination__page--active {
+  color: var(--color-champagne-bright);
+  box-shadow: inset 0 0 0 1px rgba(215, 177, 126, 0.08);
+}
+
+.operations-pagination__ellipsis {
+  min-width: 1.4rem;
+  border-color: transparent;
+  background: transparent;
+  color: rgba(244, 236, 228, 0.36);
 }
 
 .operations-order-card {
@@ -2049,6 +2212,7 @@
 .operations-field input,
 .operations-field textarea,
 .operations-field select,
+.operations-ledger-size select,
 .operations-search input {
   width: 100%;
   padding: 0.84rem 0.95rem;
@@ -2066,6 +2230,7 @@
 .operations-field input:focus,
 .operations-field textarea:focus,
 .operations-field select:focus,
+.operations-ledger-size select:focus,
 .operations-search input:focus {
   border-color: rgba(215, 177, 126, 0.28);
   box-shadow: 0 0 0 4px rgba(215, 177, 126, 0.08);

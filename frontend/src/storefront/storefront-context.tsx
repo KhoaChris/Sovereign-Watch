@@ -107,18 +107,44 @@ const TOKENS_STORAGE_KEY = "watchroom.firebase.tokens";
 const USER_STORAGE_KEY = "watchroom.auth.user";
 const FAVORITES_STORAGE_KEY = "watchroom.favorites";
 const CART_STORAGE_KEY = "watchroom.cart";
+const LEGACY_SHARED_SESSION_KEYS = [
+  TOKENS_STORAGE_KEY,
+  USER_STORAGE_KEY,
+  FAVORITES_STORAGE_KEY,
+  CART_STORAGE_KEY,
+];
 
 interface ScopedStorefrontCache<T> {
   ownerId: string;
   value: T;
 }
 
-function readStoredTokens(): FirebaseAuthTokens | null {
+function getSessionStorage(): Storage | null {
   if (typeof window === "undefined") {
     return null;
   }
 
-  const rawValue = window.localStorage.getItem(TOKENS_STORAGE_KEY);
+  return window.sessionStorage;
+}
+
+function clearLegacySharedSession(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  for (const key of LEGACY_SHARED_SESSION_KEYS) {
+    window.localStorage.removeItem(key);
+  }
+}
+
+function readStoredTokens(): FirebaseAuthTokens | null {
+  const storage = getSessionStorage();
+
+  if (!storage) {
+    return null;
+  }
+
+  const rawValue = storage.getItem(TOKENS_STORAGE_KEY);
 
   if (!rawValue) {
     return null;
@@ -127,30 +153,36 @@ function readStoredTokens(): FirebaseAuthTokens | null {
   try {
     return JSON.parse(rawValue) as FirebaseAuthTokens;
   } catch {
-    window.localStorage.removeItem(TOKENS_STORAGE_KEY);
+    storage.removeItem(TOKENS_STORAGE_KEY);
     return null;
   }
 }
 
 function persistTokens(tokens: FirebaseAuthTokens | null): void {
-  if (typeof window === "undefined") {
+  const storage = getSessionStorage();
+
+  if (!storage) {
     return;
   }
 
   if (!tokens) {
+    storage.removeItem(TOKENS_STORAGE_KEY);
     window.localStorage.removeItem(TOKENS_STORAGE_KEY);
     return;
   }
 
-  window.localStorage.setItem(TOKENS_STORAGE_KEY, JSON.stringify(tokens));
+  storage.setItem(TOKENS_STORAGE_KEY, JSON.stringify(tokens));
+  window.localStorage.removeItem(TOKENS_STORAGE_KEY);
 }
 
 function readStoredUser(): AuthUserProfile | null {
-  if (typeof window === "undefined") {
+  const storage = getSessionStorage();
+
+  if (!storage) {
     return null;
   }
 
-  const rawValue = window.localStorage.getItem(USER_STORAGE_KEY);
+  const rawValue = storage.getItem(USER_STORAGE_KEY);
 
   if (!rawValue) {
     return null;
@@ -159,33 +191,39 @@ function readStoredUser(): AuthUserProfile | null {
   try {
     return JSON.parse(rawValue) as AuthUserProfile;
   } catch {
-    window.localStorage.removeItem(USER_STORAGE_KEY);
+    storage.removeItem(USER_STORAGE_KEY);
     return null;
   }
 }
 
 function persistUser(user: AuthUserProfile | null): void {
-  if (typeof window === "undefined") {
+  const storage = getSessionStorage();
+
+  if (!storage) {
     return;
   }
 
   if (!user) {
+    storage.removeItem(USER_STORAGE_KEY);
     window.localStorage.removeItem(USER_STORAGE_KEY);
     return;
   }
 
-  window.localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+  storage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+  window.localStorage.removeItem(USER_STORAGE_KEY);
 }
 
 function readScopedStorefrontCache<T>(
   storageKey: string,
   ownerId: string,
 ): T | null {
-  if (typeof window === "undefined") {
+  const storage = getSessionStorage();
+
+  if (!storage) {
     return null;
   }
 
-  const rawValue = window.localStorage.getItem(storageKey);
+  const rawValue = storage.getItem(storageKey);
 
   if (!rawValue) {
     return null;
@@ -200,7 +238,7 @@ function readScopedStorefrontCache<T>(
 
     return parsed.value;
   } catch {
-    window.localStorage.removeItem(storageKey);
+    storage.removeItem(storageKey);
     return null;
   }
 }
@@ -210,11 +248,14 @@ function persistScopedStorefrontCache<T>(
   ownerId: string,
   value: T | null,
 ): void {
-  if (typeof window === "undefined") {
+  const storage = getSessionStorage();
+
+  if (!storage) {
     return;
   }
 
   if (!value) {
+    storage.removeItem(storageKey);
     window.localStorage.removeItem(storageKey);
     return;
   }
@@ -224,7 +265,8 @@ function persistScopedStorefrontCache<T>(
     value,
   };
 
-  window.localStorage.setItem(storageKey, JSON.stringify(payload));
+  storage.setItem(storageKey, JSON.stringify(payload));
+  window.localStorage.removeItem(storageKey);
 }
 
 function clearPersistedSession(): void {
@@ -232,6 +274,7 @@ function clearPersistedSession(): void {
   persistUser(null);
   persistScopedStorefrontCache(FAVORITES_STORAGE_KEY, "", null);
   persistScopedStorefrontCache(CART_STORAGE_KEY, "", null);
+  clearLegacySharedSession();
   setApiAuthToken(null);
 }
 
@@ -275,6 +318,8 @@ function areTokensEqual(
 }
 
 function initialState(): StorefrontState {
+  clearLegacySharedSession();
+
   const tokens = readStoredTokens();
   const storedUser = readStoredUser();
   const storedFavorites = storedUser

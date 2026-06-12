@@ -8,11 +8,17 @@ import {
 } from "react";
 import { Link } from "react-router-dom";
 import {
+  Archive,
+  ArchiveRestore,
   Bot,
   ChevronRight,
   Headphones,
   MessageCircle,
+  ReceiptText,
+  Search,
   Send,
+  ShieldAlert,
+  Trash2,
   UserRound,
   Wifi,
   WifiOff,
@@ -26,20 +32,39 @@ import {
   ensureFirebaseClientSession,
 } from "../services/firebase-client";
 import {
+  clearSupportConversationHistory,
+  loadMoreSupportConversations,
   markSupportConversationRead,
   sendAdminSupportMessage,
   sendCustomerSupportMessage,
   setAdminPresence,
+  setSupportConversationArchived,
   subscribeAdminPresence,
   subscribeCustomerConversation,
   subscribeSupportConversations,
   subscribeSupportMessages,
   type AdminPresenceState,
+  type SupportConversationPageCursor,
 } from "../services/support-chat";
-import type { SupportChatMessage, SupportConversation } from "../shared";
+import type {
+  OrderRecord,
+  SupportChatChannel,
+  SupportChatMessage,
+  SupportConversation,
+  SupportConversationStatus,
+} from "../shared";
 import "../styles/components/support-chat.css";
 
-const QUICK_PROMPTS = ["Giá Rolex", "Tìm dress watch", "Shipping"];
+const CONVERSATION_PAGE_SIZE = 25;
+const QUICK_PROMPTS = [
+  "Rolex pricing",
+  "Find a dress watch",
+  "Shipping",
+  "Payment",
+  "Warranty",
+];
+type ConversationStatusFilter = Extract<SupportConversationStatus, "open" | "archived">;
+type CustomerSupportChannel = SupportChatChannel;
 
 function formatChatTime(value: string): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -53,18 +78,95 @@ function getConversationLabel(conversation: SupportConversation): string {
 }
 
 function getConversationMeta(conversation: SupportConversation): string {
+  if (conversation.status === "archived") {
+    return "Archived";
+  }
+
   return conversation.mode === "human" ? "Admin live" : "Bot fallback";
 }
 
-function EmptyMessages({ isAdmin }: { isAdmin: boolean }) {
+function getConversationInitials(conversation: SupportConversation): string {
+  const label = getConversationLabel(conversation)
+    .replace(/@.*/, "")
+    .trim();
+  const parts = label.split(/\s+/).filter(Boolean);
+
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+
+  return (parts[0] ?? "WC").slice(0, 2).toUpperCase();
+}
+
+function normalizeConversationText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase();
+}
+
+function formatStatusLabel(value?: string | null): string {
+  if (!value) {
+    return "Pending";
+  }
+
+  return value
+    .split("_")
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
+function getActiveOrderCount(orders: OrderRecord[]): number {
+  return orders.filter(
+    (order) => !["cancelled", "delivered"].includes(order.status),
+  ).length;
+}
+
+function mergeConversations(
+  current: SupportConversation[],
+  incoming: SupportConversation[],
+): SupportConversation[] {
+  const byId = new Map<string, SupportConversation>();
+
+  [...current, ...incoming].forEach((conversation) => {
+    byId.set(conversation.id, conversation);
+  });
+
+  return Array.from(byId.values()).sort(
+    (left, right) =>
+      new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
+  );
+}
+
+function EmptyMessages({
+  channel = "admin",
+  isAdmin,
+}: {
+  channel?: CustomerSupportChannel;
+  isAdmin: boolean;
+}) {
+  const isAiChannel = channel === "ai";
+
   return (
     <div className="support-chat__empty">
-      <MessageCircle className="support-chat__empty-icon" />
-      <p>{isAdmin ? "Select a customer conversation." : "Start a conversation with the desk."}</p>
+      {isAiChannel && !isAdmin ? (
+        <Bot className="support-chat__empty-icon" />
+      ) : (
+        <MessageCircle className="support-chat__empty-icon" />
+      )}
+      <p>
+        {isAdmin
+          ? "Select a customer conversation."
+          : isAiChannel
+            ? "Ask the AI assistant."
+            : "Message the admin desk."}
+      </p>
       <span>
         {isAdmin
           ? "New customer messages appear here in realtime."
-          : "Ask about price, product search, shipping, or an active order."}
+          : isAiChannel
+            ? "Get instant help with price, product search, shipping, payment, or orders."
+            : "A live admin can review your request and reply in realtime."}
       </span>
     </div>
   );
@@ -79,6 +181,8 @@ function MessageBubble({
 }) {
   const isOutbound = message.senderRole === viewerRole;
   const isBot = message.senderRole === "bot";
+  const hasModerationFlags = message.moderationFlags.length > 0;
+  const channelLabel = message.channel === "ai" ? "AI" : "Admin";
 
   return (
     <article
@@ -87,10 +191,21 @@ function MessageBubble({
       } ${isBot ? "support-chat__message--bot" : ""}`}
     >
       <div className="support-chat__message-head">
-        <span>{message.senderName || (isBot ? "Sovereign bot" : "Client")}</span>
+        <span>
+          {message.senderName || (isBot ? "Sovereign bot" : "Client")}
+          {viewerRole === "admin" ? (
+            <em className="support-chat__message-channel">{channelLabel}</em>
+          ) : null}
+        </span>
         <time>{formatChatTime(message.createdAt)}</time>
       </div>
       <p>{message.body}</p>
+      {hasModerationFlags ? (
+        <span className="support-chat__message-flag">
+          <ShieldAlert className="support-chat__icon" />
+          Flagged for review
+        </span>
+      ) : null}
 
       {message.suggestions.length > 0 ? (
         <div className="support-chat__suggestions">
@@ -143,11 +258,25 @@ export function SupportChatWidget() {
   const [customerConversation, setCustomerConversation] =
     useState<SupportConversation | null>(null);
   const [conversations, setConversations] = useState<SupportConversation[]>([]);
+  const [conversationCursor, setConversationCursor] =
+    useState<SupportConversationPageCursor | null>(null);
+  const [conversationStatusFilter, setConversationStatusFilter] =
+    useState<ConversationStatusFilter>("open");
+  const [hasMoreConversations, setHasMoreConversations] = useState(false);
+  const [loadingMoreConversations, setLoadingMoreConversations] = useState(false);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(
     null,
   );
+  const [adminOrders, setAdminOrders] = useState<OrderRecord[]>([]);
+  const [ordersError, setOrdersError] = useState<string | null>(null);
   const [messages, setMessages] = useState<SupportChatMessage[]>([]);
+  const [customerChannel, setCustomerChannel] =
+    useState<CustomerSupportChannel | null>(null);
+  const [conversationSearch, setConversationSearch] = useState("");
   const [messageDraft, setMessageDraft] = useState("");
+  const [archivingConversation, setArchivingConversation] = useState(false);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const [clearingHistory, setClearingHistory] = useState(false);
   const [sending, setSending] = useState(false);
   const messageListRef = useRef<HTMLDivElement | null>(null);
 
@@ -164,11 +293,77 @@ export function SupportChatWidget() {
     );
   }, [conversations, customerConversation, isAdmin, selectedConversationId]);
 
+  const filteredConversations = useMemo(() => {
+    const searchTerm = normalizeConversationText(conversationSearch.trim());
+    const statusFilteredConversations = conversations.filter(
+      (conversation) => conversation.status === conversationStatusFilter,
+    );
+
+    if (!searchTerm) {
+      return statusFilteredConversations;
+    }
+
+    return statusFilteredConversations.filter((conversation) => {
+      const searchableText = normalizeConversationText(
+        [
+          getConversationLabel(conversation),
+          conversation.userEmail,
+          conversation.lastMessage,
+          getConversationMeta(conversation),
+        ].join(" "),
+      );
+
+      return searchableText.includes(searchTerm);
+    });
+  }, [conversationSearch, conversationStatusFilter, conversations]);
+
+  const activeConversationOrders = useMemo(() => {
+    if (!isAdmin || !activeConversation) {
+      return [];
+    }
+
+    return adminOrders
+      .filter((order) => order.customerId === activeConversation.userId)
+      .sort(
+        (left, right) =>
+          new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+      );
+  }, [activeConversation, adminOrders, isAdmin]);
+
+  const latestOrder = activeConversationOrders[0] ?? null;
+  const activeOrderCount = getActiveOrderCount(activeConversationOrders);
+  const activeCustomerChannel: CustomerSupportChannel = isAdmin
+    ? "admin"
+    : customerChannel ?? (adminPresence.online ? "admin" : "ai");
+  const isCustomerAdminChannelLocked =
+    !isAdmin && activeCustomerChannel === "admin" && !adminPresence.online;
+  const visibleMessages = useMemo(
+    () =>
+      isAdmin
+        ? messages
+        : messages.filter((message) => message.channel === activeCustomerChannel),
+    [activeCustomerChannel, isAdmin, messages],
+  );
+
   const onlineLabel = isAdmin
     ? "Admin online"
     : adminPresence.online
       ? "Admin online"
-      : "Bot active";
+      : "AI available";
+  const headerTitle = isAdmin
+    ? "Live desk"
+    : activeCustomerChannel === "admin"
+      ? adminPresence.online
+        ? "Admin online"
+        : "Admin offline"
+      : "AI assistant";
+  const statusLabel = isAdmin
+    ? "Admin online"
+    : activeCustomerChannel === "admin"
+      ? adminPresence.online
+        ? "Admin online"
+        : "Admin offline"
+      : "AI assistant ready";
 
   useEffect(() => {
     let active = true;
@@ -178,8 +373,12 @@ export function SupportChatWidget() {
       setSetupError(null);
       setCustomerConversation(null);
       setConversations([]);
+      setConversationCursor(null);
+      setHasMoreConversations(false);
       setSelectedConversationId(null);
       setMessages([]);
+      setCustomerChannel(null);
+      setAdminOrders([]);
       void clearFirebaseClientSession();
       return;
     }
@@ -190,7 +389,7 @@ export function SupportChatWidget() {
     const connect = async () => {
       try {
         const { customToken } = await storefrontApi.getFirebaseCustomToken();
-        await ensureFirebaseClientSession(customToken, user.firebaseUid);
+        await ensureFirebaseClientSession(customToken, user.firebaseUid, user.role);
 
         if (active) {
           setReady(true);
@@ -250,6 +449,14 @@ export function SupportChatWidget() {
   }, [isAdmin, ready, user]);
 
   useEffect(() => {
+    if (isAdmin || customerChannel !== "admin" || adminPresence.online) {
+      return;
+    }
+
+    setCustomerChannel("ai");
+  }, [adminPresence.online, customerChannel, isAdmin]);
+
+  useEffect(() => {
     if (!ready || !user || isAdmin) {
       return;
     }
@@ -267,18 +474,65 @@ export function SupportChatWidget() {
     }
 
     return subscribeSupportConversations(
-      setConversations,
+      (page) => {
+        setConversations(page.conversations);
+        setConversationCursor(page.cursor);
+        setHasMoreConversations(page.hasMore);
+      },
       (error) => setSetupError(error.message),
+      CONVERSATION_PAGE_SIZE,
     );
   }, [isAdmin, ready]);
 
   useEffect(() => {
-    if (!isAdmin || selectedConversationId || conversations.length === 0) {
+    if (!ready || !isAdmin) {
       return;
     }
 
-    setSelectedConversationId(conversations[0].id);
-  }, [conversations, isAdmin, selectedConversationId]);
+    let active = true;
+
+    const loadOrders = async () => {
+      try {
+        const orders = await storefrontApi.getOrders();
+
+        if (active) {
+          setAdminOrders(orders);
+          setOrdersError(null);
+        }
+      } catch (error) {
+        if (active) {
+          setOrdersError(
+            error instanceof Error ? error.message : "Unable to load order context.",
+          );
+        }
+      }
+    };
+
+    void loadOrders();
+
+    return () => {
+      active = false;
+    };
+  }, [isAdmin, ready]);
+
+  useEffect(() => {
+    if (!isAdmin) {
+      return;
+    }
+
+    if (filteredConversations.length === 0) {
+      setSelectedConversationId(null);
+      return;
+    }
+
+    const selectedConversation = filteredConversations.find(
+      (conversation) => conversation.id === selectedConversationId,
+    );
+
+    if (!selectedConversation) {
+      setSelectedConversationId(filteredConversations[0].id);
+    }
+  }, [filteredConversations, isAdmin, selectedConversationId]);
 
   useEffect(() => {
     if (!activeConversationId || !ready) {
@@ -294,7 +548,7 @@ export function SupportChatWidget() {
   }, [activeConversationId, ready]);
 
   useEffect(() => {
-    if (!open || !activeConversationId || messages.length === 0) {
+    if (!open || !activeConversationId || visibleMessages.length === 0) {
       return;
     }
 
@@ -302,7 +556,7 @@ export function SupportChatWidget() {
       activeConversationId,
       isAdmin ? "admin" : "user",
     ).catch(() => undefined);
-  }, [activeConversationId, isAdmin, messages.length, open]);
+  }, [activeConversationId, isAdmin, open, visibleMessages.length]);
 
   useEffect(() => {
     if (!messageListRef.current) {
@@ -310,7 +564,25 @@ export function SupportChatWidget() {
     }
 
     messageListRef.current.scrollTop = messageListRef.current.scrollHeight;
-  }, [messages.length, open]);
+  }, [visibleMessages.length, open]);
+
+  useEffect(() => {
+    if (!clearConfirmOpen) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !clearingHistory) {
+        setClearConfirmOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [clearConfirmOpen, clearingHistory]);
 
   const handleOpenClick = useCallback(() => {
     if (!isAuthenticated) {
@@ -332,6 +604,12 @@ export function SupportChatWidget() {
       return;
     }
 
+    if (isCustomerAdminChannelLocked) {
+      setCustomerChannel("ai");
+      setSetupError("The admin desk is offline. AI assistant is still available.");
+      return;
+    }
+
     const nextMessage = messageDraft;
     setMessageDraft("");
     setSending(true);
@@ -345,8 +623,10 @@ export function SupportChatWidget() {
         });
       } else {
         await sendCustomerSupportMessage({
-          adminOnline: adminPresence.online,
+          adminOnline:
+            activeCustomerChannel === "admin" && adminPresence.online,
           body: nextMessage,
+          channel: activeCustomerChannel,
           user,
         });
       }
@@ -361,6 +641,109 @@ export function SupportChatWidget() {
       setSending(false);
     }
   };
+
+  const handleRequestClearHistory = useCallback(() => {
+    if (!activeConversationId || visibleMessages.length === 0 || clearingHistory) {
+      return;
+    }
+
+    setClearConfirmOpen(true);
+  }, [activeConversationId, clearingHistory, visibleMessages.length]);
+
+  const handleConfirmClearHistory = useCallback(async () => {
+    if (!activeConversationId || visibleMessages.length === 0 || clearingHistory) {
+      return;
+    }
+
+    setClearingHistory(true);
+    setSetupError(null);
+
+    try {
+      await clearSupportConversationHistory(
+        activeConversationId,
+        isAdmin ? undefined : activeCustomerChannel,
+      );
+      setMessageDraft("");
+      setClearConfirmOpen(false);
+    } catch (error) {
+      setSetupError(
+        error instanceof Error
+          ? error.message
+          : "Unable to clear chat history right now.",
+      );
+    } finally {
+      setClearingHistory(false);
+    }
+  }, [
+    activeConversationId,
+    activeCustomerChannel,
+    clearingHistory,
+    isAdmin,
+    visibleMessages.length,
+  ]);
+
+  const handleCancelClearHistory = useCallback(() => {
+    if (clearingHistory) {
+      return;
+    }
+
+    setClearConfirmOpen(false);
+  }, [clearingHistory]);
+
+  const handleLoadMoreConversations = useCallback(async () => {
+    if (!conversationCursor || loadingMoreConversations) {
+      return;
+    }
+
+    setLoadingMoreConversations(true);
+
+    try {
+      const page = await loadMoreSupportConversations(
+        conversationCursor,
+        CONVERSATION_PAGE_SIZE,
+      );
+
+      setConversations((current) => mergeConversations(current, page.conversations));
+      setConversationCursor(page.cursor);
+      setHasMoreConversations(page.hasMore);
+    } catch (error) {
+      setSetupError(
+        error instanceof Error
+          ? error.message
+          : "Unable to load more conversations right now.",
+      );
+    } finally {
+      setLoadingMoreConversations(false);
+    }
+  }, [conversationCursor, loadingMoreConversations]);
+
+  const handleArchiveConversation = useCallback(async () => {
+    if (!user || !activeConversation || archivingConversation) {
+      return;
+    }
+
+    const nextArchived = activeConversation.status !== "archived";
+
+    setArchivingConversation(true);
+    setSetupError(null);
+
+    try {
+      await setSupportConversationArchived({
+        admin: user,
+        archived: nextArchived,
+        conversationId: activeConversation.id,
+      });
+      setConversationStatusFilter(nextArchived ? "open" : "archived");
+    } catch (error) {
+      setSetupError(
+        error instanceof Error
+          ? error.message
+          : "Unable to update conversation archive status.",
+      );
+    } finally {
+      setArchivingConversation(false);
+    }
+  }, [activeConversation, archivingConversation, user]);
 
   const unreadCount = isAdmin
     ? conversations.reduce(
@@ -383,17 +766,19 @@ export function SupportChatWidget() {
               <span className="support-chat__header-icon">
                 {isAdmin ? (
                   <Headphones className="support-chat__icon" />
+                ) : activeCustomerChannel === "ai" ? (
+                  <Bot className="support-chat__icon" />
                 ) : adminPresence.online ? (
                   <Wifi className="support-chat__icon" />
                 ) : (
-                  <Bot className="support-chat__icon" />
+                  <WifiOff className="support-chat__icon" />
                 )}
               </span>
               <div>
                 <p className="support-chat__eyebrow">
                   {isAdmin ? "Support operations" : "Client support"}
                 </p>
-                <h2>{isAdmin ? "Live desk" : onlineLabel}</h2>
+                <h2>{headerTitle}</h2>
               </div>
             </div>
             <button
@@ -417,59 +802,351 @@ export function SupportChatWidget() {
             <div className="support-chat__body">
               {isAdmin ? (
                 <aside className="support-chat__threads" aria-label="Customer conversations">
-                  {conversations.length === 0 ? (
-                    <p className="support-chat__threads-empty">No conversations yet.</p>
-                  ) : (
-                    conversations.map((conversation) => (
+                  <div className="support-chat__threads-toolbar">
+                    <span>
+                      <p className="support-chat__eyebrow">Customers</p>
+                      <strong>{conversations.length} conversations</strong>
+                    </span>
+                    <em>{filteredConversations.length}</em>
+                  </div>
+
+                  <div
+                    aria-label="Conversation status"
+                    className="support-chat__thread-tabs"
+                    role="group"
+                  >
+                    {(["open", "archived"] as const).map((status) => (
                       <button
-                        className={`support-chat__thread ${
-                          selectedConversationId === conversation.id
-                            ? "support-chat__thread--active"
-                            : ""
-                        }`}
-                        key={conversation.id}
-                        onClick={() => setSelectedConversationId(conversation.id)}
+                        className={
+                          conversationStatusFilter === status
+                            ? "support-chat__thread-tab support-chat__thread-tab--active"
+                            : "support-chat__thread-tab"
+                        }
+                        key={status}
+                        onClick={() => setConversationStatusFilter(status)}
                         type="button"
                       >
-                        <span>
-                          <strong>{getConversationLabel(conversation)}</strong>
-                          <small>{getConversationMeta(conversation)}</small>
-                        </span>
-                        {conversation.unreadForAdmin > 0 ? (
-                          <em>{conversation.unreadForAdmin}</em>
-                        ) : null}
+                        {status === "open" ? "Open" : "Archived"}
                       </button>
-                    ))
-                  )}
+                    ))}
+                  </div>
+
+                  <label className="support-chat__thread-search">
+                    <Search className="support-chat__icon" />
+                    <span className="support-chat__sr-only">Search customers</span>
+                    <input
+                      onChange={(event) => setConversationSearch(event.target.value)}
+                      placeholder="Search name, email, message"
+                      type="search"
+                      value={conversationSearch}
+                    />
+                    {conversationSearch ? (
+                      <button
+                        aria-label="Clear customer search"
+                        onClick={() => setConversationSearch("")}
+                        title="Clear search"
+                        type="button"
+                      >
+                        <X className="support-chat__icon" />
+                      </button>
+                    ) : null}
+                  </label>
+
+                  <div className="support-chat__thread-list">
+                    {conversations.length === 0 ? (
+                      <p className="support-chat__threads-empty">No conversations yet.</p>
+                    ) : filteredConversations.length === 0 ? (
+                      <p className="support-chat__threads-empty">No customers match this search.</p>
+                    ) : (
+                      <>
+                        {filteredConversations.map((conversation) => (
+                          <button
+                            className={`support-chat__thread ${
+                              selectedConversationId === conversation.id
+                                ? "support-chat__thread--active"
+                                : ""
+                            } ${
+                              conversation.unreadForAdmin > 0
+                                ? "support-chat__thread--unread"
+                                : ""
+                            }`}
+                            key={conversation.id}
+                            onClick={() => setSelectedConversationId(conversation.id)}
+                            type="button"
+                          >
+                            <span className="support-chat__thread-avatar">
+                              {getConversationInitials(conversation)}
+                            </span>
+                            <span className="support-chat__thread-main">
+                              <span className="support-chat__thread-top">
+                                <strong>{getConversationLabel(conversation)}</strong>
+                                <time>{formatChatTime(conversation.lastMessageAt)}</time>
+                              </span>
+                              <span className="support-chat__thread-detail">
+                                {conversation.userEmail || getConversationMeta(conversation)}
+                              </span>
+                              <span className="support-chat__thread-preview">
+                                {conversation.lastMessage || getConversationMeta(conversation)}
+                              </span>
+                            </span>
+                            {conversation.unreadForAdmin > 0 ? (
+                              <em>{Math.min(conversation.unreadForAdmin, 9)}</em>
+                            ) : null}
+                          </button>
+                        ))}
+                        {hasMoreConversations ? (
+                          <button
+                            className="support-chat__load-more"
+                            disabled={loadingMoreConversations}
+                            onClick={handleLoadMoreConversations}
+                            type="button"
+                          >
+                            {loadingMoreConversations ? "Loading" : "Load more"}
+                          </button>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
                 </aside>
               ) : null}
 
               <div className="support-chat__conversation">
+                {!isAdmin ? (
+                  <div
+                    aria-label="Support channel"
+                    className="support-chat__channel-switch"
+                    role="group"
+                  >
+                    <button
+                      aria-pressed={activeCustomerChannel === "admin"}
+                      className={`support-chat__channel-option ${
+                        activeCustomerChannel === "admin"
+                          ? "support-chat__channel-option--active"
+                          : ""
+                      }`}
+                      disabled={!adminPresence.online}
+                      onClick={() => {
+                        setSetupError(null);
+                        setCustomerChannel("admin");
+                      }}
+                      title={
+                        adminPresence.online
+                          ? "Chat with the admin desk"
+                          : "Admin desk is offline"
+                      }
+                      type="button"
+                    >
+                      <span className="support-chat__channel-icon">
+                        {adminPresence.online ? (
+                          <Headphones className="support-chat__icon" />
+                        ) : (
+                          <WifiOff className="support-chat__icon" />
+                        )}
+                      </span>
+                      <span className="support-chat__channel-copy">
+                        <strong>Admin desk</strong>
+                        <small>
+                          {adminPresence.online
+                            ? "Live support available"
+                            : "Offline right now"}
+                        </small>
+                      </span>
+                      <em
+                        className={
+                          adminPresence.online
+                            ? "support-chat__channel-badge support-chat__channel-badge--online"
+                            : "support-chat__channel-badge"
+                        }
+                      >
+                        {adminPresence.online ? "Online" : "Locked"}
+                      </em>
+                    </button>
+
+                    <button
+                      aria-pressed={activeCustomerChannel === "ai"}
+                      className={`support-chat__channel-option ${
+                        activeCustomerChannel === "ai"
+                          ? "support-chat__channel-option--active"
+                          : ""
+                      }`}
+                      onClick={() => {
+                        setSetupError(null);
+                        setCustomerChannel("ai");
+                      }}
+                      type="button"
+                    >
+                      <span className="support-chat__channel-icon">
+                        <Bot className="support-chat__icon" />
+                      </span>
+                      <span className="support-chat__channel-copy">
+                        <strong>AI assistant</strong>
+                        <small>Always available</small>
+                      </span>
+                      <em className="support-chat__channel-badge support-chat__channel-badge--online">
+                        24/7
+                      </em>
+                    </button>
+                  </div>
+                ) : null}
+
                 <div className="support-chat__status-row">
                   <span
                     className={`support-chat__status ${
-                      isAdmin || adminPresence.online
+                      isAdmin ||
+                      activeCustomerChannel === "ai" ||
+                      adminPresence.online
                         ? "support-chat__status--online"
                         : ""
                     }`}
                   >
-                    {isAdmin || adminPresence.online ? (
+                    {!isAdmin && activeCustomerChannel === "ai" ? (
+                      <Bot className="support-chat__status-icon" />
+                    ) : isAdmin || adminPresence.online ? (
                       <Wifi className="support-chat__status-icon" />
                     ) : (
                       <WifiOff className="support-chat__status-icon" />
                     )}
-                    {onlineLabel}
+                    {statusLabel}
                   </span>
-                  {activeConversation ? (
-                    <span>{getConversationLabel(activeConversation)}</span>
-                  ) : null}
+                  <div className="support-chat__status-actions">
+                    {activeConversation ? (
+                      <span>{getConversationLabel(activeConversation)}</span>
+                    ) : null}
+                    {isAdmin && activeConversation ? (
+                      <button
+                        aria-label={
+                          activeConversation.status === "archived"
+                            ? "Restore conversation"
+                            : "Archive conversation"
+                        }
+                        className="support-chat__clear support-chat__clear--neutral"
+                        disabled={archivingConversation}
+                        onClick={handleArchiveConversation}
+                        title={
+                          activeConversation.status === "archived"
+                            ? "Restore conversation"
+                            : "Archive conversation"
+                        }
+                        type="button"
+                      >
+                        {activeConversation.status === "archived" ? (
+                          <ArchiveRestore className="support-chat__icon" />
+                        ) : (
+                          <Archive className="support-chat__icon" />
+                        )}
+                      </button>
+                    ) : null}
+                    <button
+                      aria-label="Clear chat history"
+                      className="support-chat__clear"
+                      disabled={
+                        clearingHistory ||
+                        !activeConversationId ||
+                        visibleMessages.length === 0
+                      }
+                      onClick={handleRequestClearHistory}
+                      title="Clear history"
+                      type="button"
+                    >
+                      <Trash2 className="support-chat__icon" />
+                    </button>
+                  </div>
                 </div>
 
+                {isAdmin && activeConversation ? (
+                  <section className="support-chat__context" aria-label="Customer context">
+                    <div className="support-chat__context-item">
+                      <MessageCircle className="support-chat__icon" />
+                      <span>
+                        <strong>{activeConversation.messageCount}</strong>
+                        <small>Messages</small>
+                      </span>
+                    </div>
+                    <div className="support-chat__context-item">
+                      <ShieldAlert className="support-chat__icon" />
+                      <span>
+                        <strong>{activeConversation.moderationFlagCount}</strong>
+                        <small>Flags</small>
+                      </span>
+                    </div>
+                    <div className="support-chat__context-item support-chat__context-item--wide">
+                      <ReceiptText className="support-chat__icon" />
+                      <span>
+                        <strong>
+                          {activeConversationOrders.length} orders
+                          {activeOrderCount > 0 ? ` / ${activeOrderCount} active` : ""}
+                        </strong>
+                        <small>
+                          {ordersError
+                            ? "Order context unavailable"
+                            : latestOrder
+                              ? `${latestOrder.orderNumber} · ${formatStatusLabel(latestOrder.status)} · ${formatStatusLabel(latestOrder.payment?.status)}`
+                              : "No orders linked to this customer"}
+                        </small>
+                      </span>
+                    </div>
+                  </section>
+                ) : null}
+
+                {clearConfirmOpen ? (
+                  <div
+                    aria-describedby="support-chat-clear-description"
+                    aria-labelledby="support-chat-clear-title"
+                    aria-modal="true"
+                    className="support-chat__modal-backdrop"
+                    onClick={handleCancelClearHistory}
+                    role="dialog"
+                  >
+                    <div
+                      className="support-chat__modal"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <span className="support-chat__modal-icon">
+                        <Trash2 className="support-chat__icon" />
+                      </span>
+                      <div className="support-chat__modal-copy">
+                        <p className="support-chat__eyebrow">Conversation history</p>
+                        <h3 id="support-chat-clear-title">Clear chat history?</h3>
+                        <p id="support-chat-clear-description">
+                          {isAdmin
+                            ? "This removes every message in the selected conversation."
+                            : "This removes messages in the current support channel."}
+                          {" "}
+                          The conversation stays available for new support notes.
+                        </p>
+                      </div>
+                      <div className="support-chat__modal-actions">
+                        <button
+                          autoFocus
+                          className="support-chat__modal-button support-chat__modal-button--ghost"
+                          disabled={clearingHistory}
+                          onClick={handleCancelClearHistory}
+                          type="button"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="support-chat__modal-button support-chat__modal-button--danger"
+                          disabled={clearingHistory}
+                          onClick={handleConfirmClearHistory}
+                          type="button"
+                        >
+                          <Trash2 className="support-chat__icon" />
+                          {clearingHistory ? "Clearing" : "Clear history"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="support-chat__messages" ref={messageListRef}>
-                  {messages.length === 0 ? (
-                    <EmptyMessages isAdmin={isAdmin} />
+                  {visibleMessages.length === 0 ? (
+                    <EmptyMessages
+                      channel={activeCustomerChannel}
+                      isAdmin={isAdmin}
+                    />
                   ) : (
-                    messages.map((message) => (
+                    visibleMessages.map((message) => (
                       <MessageBubble
                         key={message.id}
                         message={message}
@@ -479,7 +1156,7 @@ export function SupportChatWidget() {
                   )}
                 </div>
 
-                {!isAdmin ? (
+                {!isAdmin && activeCustomerChannel === "ai" ? (
                   <div className="support-chat__quick-row">
                     {QUICK_PROMPTS.map((prompt) => (
                       <button
@@ -497,14 +1174,18 @@ export function SupportChatWidget() {
                   <label className="support-chat__input-shell">
                     <span className="support-chat__sr-only">Message</span>
                     <textarea
-                      disabled={sending || (isAdmin && !activeConversationId)}
+                      disabled={
+                        sending ||
+                        (isAdmin && !activeConversationId) ||
+                        isCustomerAdminChannelLocked
+                      }
                       onChange={(event) => setMessageDraft(event.target.value)}
                       placeholder={
                         isAdmin
                           ? "Reply to the selected customer"
-                          : adminPresence.online
+                          : activeCustomerChannel === "admin"
                             ? "Message the admin desk"
-                            : "Ask the bot or leave a note"
+                            : "Ask the AI assistant"
                       }
                       rows={2}
                       value={messageDraft}
@@ -516,7 +1197,8 @@ export function SupportChatWidget() {
                     disabled={
                       sending ||
                       !messageDraft.trim() ||
-                      (isAdmin && !activeConversationId)
+                      (isAdmin && !activeConversationId) ||
+                      isCustomerAdminChannelLocked
                     }
                     title="Send"
                     type="submit"

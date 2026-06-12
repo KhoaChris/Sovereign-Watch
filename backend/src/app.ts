@@ -12,9 +12,26 @@ import { reviewsRouter } from "./routes/reviews";
 
 export const app = express();
 
+const LOCAL_DEVELOPMENT_ORIGIN =
+  /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/;
+
+function isAllowedCorsOrigin(origin?: string): boolean {
+  if (!origin) {
+    return true;
+  }
+
+  if (origin === env.FRONTEND_URL) {
+    return true;
+  }
+
+  return env.NODE_ENV !== "production" && LOCAL_DEVELOPMENT_ORIGIN.test(origin);
+}
+
 app.use(
   cors({
-    origin: env.FRONTEND_URL,
+    origin: (origin, callback) => {
+      callback(null, isAllowedCorsOrigin(origin));
+    },
   }),
 );
 app.use(express.json({ limit: "8mb" }));

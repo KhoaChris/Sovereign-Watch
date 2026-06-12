@@ -335,7 +335,8 @@ export interface ProductDiscoveryResponse {
 }
 
 export type SupportConversationMode = "human" | "bot";
-export type SupportConversationStatus = "open" | "closed";
+export type SupportConversationStatus = "open" | "closed" | "archived";
+export type SupportChatChannel = "admin" | "ai";
 export type SupportSenderRole = "admin" | "bot" | "user";
 
 export interface FirebaseCustomTokenResponse {
@@ -355,11 +356,19 @@ export interface SupportConversation {
   assignedAdminEmail: string;
   assignedAdminId: EntityId | null;
   assignedAdminName: string;
+  archivedAt: ISODateString | null;
+  archivedByAdminId: EntityId | null;
+  archivedByAdminName: string;
   createdAt: ISODateString;
   id: EntityId;
   lastMessage: string;
+  lastAdminMessageAt: ISODateString | null;
+  lastBotMessageAt: ISODateString | null;
+  lastCustomerMessageAt: ISODateString | null;
   lastMessageAt: ISODateString;
+  messageCount: number;
   mode: SupportConversationMode;
+  moderationFlagCount: number;
   status: SupportConversationStatus;
   unreadForAdmin: number;
   unreadForUser: number;
@@ -371,12 +380,14 @@ export interface SupportConversation {
 
 export interface SupportChatMessage {
   body: string;
+  channel: SupportChatChannel;
   conversationId: EntityId;
   createdAt: ISODateString;
   id: EntityId;
   senderId: EntityId;
   senderName: string;
   senderRole: SupportSenderRole;
+  moderationFlags: string[];
   suggestions: SupportChatProductSuggestion[];
 }
 
