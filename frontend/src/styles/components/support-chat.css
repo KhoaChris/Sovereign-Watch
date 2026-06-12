@@ -66,6 +66,10 @@
   font-weight: 700;
 }
 
+body.operations-pdf-export .support-chat {
+  display: none !important;
+}
+
 .support-chat__panel {
   position: absolute;
   right: 0;
@@ -1157,5 +1161,11 @@
   .support-chat__launcher-copy,
   .support-chat__launcher-mini {
     display: none;
+  }
+}
+
+@media print {
+  .support-chat {
+    display: none !important;
   }
 }

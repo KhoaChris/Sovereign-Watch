@@ -2397,7 +2397,7 @@ export function OperationsPage({
               <p className="orders-page__eyebrow">Admin operations</p>
               <h1 className="orders-page__title">DASHBOARD</h1>
               <p className="orders-page__copy">
-                Fundementals on managing your business.
+                Fundamentals on managing your business.
               </p>
             </div>
 
