@@ -24,6 +24,7 @@ export const checkoutDetailsSchema = z.object({
 });
 
 export const prepareCheckoutPaymentSchema = z.object({
+  details: checkoutDetailsSchema,
   paymentMethod: z.enum(["card", "wallet"]),
 });
 

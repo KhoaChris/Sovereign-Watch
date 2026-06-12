@@ -391,6 +391,23 @@ export interface SupportChatMessage {
   suggestions: SupportChatProductSuggestion[];
 }
 
+export type AiConciergeResponseSource = "backend_context" | "local_fallback";
+
+export interface AiConciergeRequest {
+  message: string;
+}
+
+export interface AiConciergeResponse {
+  body: string;
+  context: {
+    intent: string;
+    matchedProducts: number;
+    recentOrders: number;
+  };
+  source: AiConciergeResponseSource;
+  suggestions: SupportChatProductSuggestion[];
+}
+
 export interface CreateProductPayload {
   categoryId: EntityId;
   brandId: EntityId;
@@ -491,6 +508,7 @@ export interface CheckoutDetailsInput {
 }
 
 export interface PrepareCheckoutPaymentPayload {
+  details: CheckoutDetailsInput;
   paymentMethod: StripeCheckoutPaymentMethod;
 }
 

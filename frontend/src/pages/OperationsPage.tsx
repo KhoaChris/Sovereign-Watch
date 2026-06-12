@@ -109,6 +109,7 @@ interface AdminPresetOption {
 }
 
 type PaginationToken = number | "ellipsis";
+type SalesLedgerPaymentFilter = "all" | "paid" | "processing" | "failed";
 
 const PRODUCT_IMAGE_ACCEPT = ".png,.jpg,.jpeg,image/png,image/jpeg";
 const PRODUCT_IMAGE_MAX_BYTES = 4 * 1024 * 1024;
@@ -552,6 +553,15 @@ const SHIPPING_STATUS_OPTIONS: ShippingStatus[] = [
   "returned",
 ];
 const SALES_LEDGER_PAGE_SIZE_OPTIONS = [5, 10, 20, 50] as const;
+const SALES_LEDGER_PAYMENT_FILTERS: Array<{
+  label: string;
+  value: SalesLedgerPaymentFilter;
+}> = [
+  { label: "All", value: "all" },
+  { label: "Paid", value: "paid" },
+  { label: "Processing", value: "processing" },
+  { label: "Failed", value: "failed" },
+];
 
 const ADMIN_SECTIONS = [
   {
@@ -646,6 +656,73 @@ function formatStatusLabel(value: string | undefined): string {
     .filter(Boolean)
     .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
     .join(" ");
+}
+
+function getPaymentStatus(order: OrderRecord): PaymentStatus {
+  return order.payment?.status ?? "pending";
+}
+
+function getPaymentStatusTone(
+  status: PaymentStatus | undefined,
+): Exclude<SalesLedgerPaymentFilter, "all"> {
+  if (status === "paid") {
+    return "paid";
+  }
+
+  if (status === "failed" || status === "refunded") {
+    return "failed";
+  }
+
+  return "processing";
+}
+
+function getPaymentStatusHeadline(
+  status: PaymentStatus | undefined,
+): string {
+  const tone = getPaymentStatusTone(status);
+
+  if (tone === "paid") {
+    return "Paid";
+  }
+
+  if (tone === "failed") {
+    return status === "refunded" ? "Refunded" : "Failed";
+  }
+
+  return status === "authorized" ? "Authorized" : "Processing";
+}
+
+function getPaymentStatusDetail(
+  status: PaymentStatus | undefined,
+): string {
+  if (status === "paid") {
+    return "Stripe or admin marked this payment captured.";
+  }
+
+  if (status === "authorized") {
+    return "Payment is authorized and waiting capture.";
+  }
+
+  if (status === "failed") {
+    return "Payment failed and needs follow-up.";
+  }
+
+  if (status === "refunded") {
+    return "Funds were returned to the client.";
+  }
+
+  return "Waiting for payment confirmation.";
+}
+
+function orderMatchesPaymentFilter(
+  order: OrderRecord,
+  filter: SalesLedgerPaymentFilter,
+): boolean {
+  if (filter === "all") {
+    return true;
+  }
+
+  return getPaymentStatusTone(getPaymentStatus(order)) === filter;
 }
 
 function humanizeToken(value: string): string {
@@ -1072,6 +1149,7 @@ function buildSalesLedgerSearchText(
     formatStatusLabel(order.status),
     order.payment?.status,
     formatStatusLabel(order.payment?.status),
+    getPaymentStatusHeadline(order.payment?.status),
     order.payment?.method,
     formatStatusLabel(order.payment?.method),
     order.shipping?.status,
@@ -1497,6 +1575,8 @@ export function OperationsPage({
   const [uploadingImages, setUploadingImages] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [salesLedgerSearch, setSalesLedgerSearch] = useState("");
+  const [salesLedgerPaymentFilter, setSalesLedgerPaymentFilter] =
+    useState<SalesLedgerPaymentFilter>("all");
   const [salesLedgerPage, setSalesLedgerPage] = useState(1);
   const [salesLedgerPageSize, setSalesLedgerPageSize] = useState(10);
   const [productSearch, setProductSearch] = useState("");
@@ -1601,7 +1681,7 @@ export function OperationsPage({
   const salesSeries = useMemo(() => buildSalesSeries(orders), [orders]);
   const statusSegments = useMemo(() => buildStatusSegments(orders), [orders]);
   const variantLookup = useMemo(() => buildVariantLookup(products), [products]);
-  const filteredSalesLedgerOrders = useMemo(() => {
+  const searchMatchedSalesLedgerOrders = useMemo(() => {
     return sortedOrders.filter((order) =>
       orderMatchesSalesLedgerSearch(
         order,
@@ -1610,6 +1690,28 @@ export function OperationsPage({
       ),
     );
   }, [deferredSalesLedgerSearch, sortedOrders, variantLookup]);
+  const salesLedgerPaymentFilterCounts = useMemo(() => {
+    return searchMatchedSalesLedgerOrders.reduce<
+      Record<SalesLedgerPaymentFilter, number>
+    >(
+      (counts, order) => {
+        counts.all += 1;
+        counts[getPaymentStatusTone(getPaymentStatus(order))] += 1;
+        return counts;
+      },
+      {
+        all: 0,
+        failed: 0,
+        paid: 0,
+        processing: 0,
+      },
+    );
+  }, [searchMatchedSalesLedgerOrders]);
+  const filteredSalesLedgerOrders = useMemo(() => {
+    return searchMatchedSalesLedgerOrders.filter((order) =>
+      orderMatchesPaymentFilter(order, salesLedgerPaymentFilter),
+    );
+  }, [salesLedgerPaymentFilter, searchMatchedSalesLedgerOrders]);
   const salesLedgerTotalPages = Math.max(
     1,
     Math.ceil(filteredSalesLedgerOrders.length / salesLedgerPageSize),
@@ -2584,11 +2686,13 @@ export function OperationsPage({
                             ))}
                           </select>
                         </label>
-                        {salesLedgerSearch.trim() ? (
+                        {salesLedgerSearch.trim() ||
+                        salesLedgerPaymentFilter !== "all" ? (
                           <button
                             className="operations-ledger-clear"
                             onClick={() => {
                               setSalesLedgerSearch("");
+                              setSalesLedgerPaymentFilter("all");
                               setSalesLedgerPage(1);
                             }}
                             type="button"
@@ -2597,12 +2701,44 @@ export function OperationsPage({
                           </button>
                         ) : null}
                       </div>
+
+                      <div
+                        aria-label="Filter sales ledger by payment status"
+                        className="operations-ledger-filters"
+                      >
+                        {SALES_LEDGER_PAYMENT_FILTERS.map((filter) => {
+                          const isActive =
+                            salesLedgerPaymentFilter === filter.value;
+
+                          return (
+                            <button
+                              aria-pressed={isActive}
+                              className={`operations-ledger-filter operations-ledger-filter--${filter.value} ${
+                                isActive
+                                  ? "operations-ledger-filter--active"
+                                  : ""
+                              }`}
+                              key={filter.value}
+                              onClick={() => {
+                                setSalesLedgerPaymentFilter(filter.value);
+                                setSalesLedgerPage(1);
+                              }}
+                              type="button"
+                            >
+                              <span>{filter.label}</span>
+                              <strong>
+                                {salesLedgerPaymentFilterCounts[filter.value]}
+                              </strong>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
 
                     {filteredSalesLedgerOrders.length === 0 ? (
                       <div className="orders-page__empty-state">
-                        No orders match this ledger search. Try an order number,
-                        customer name, phone, product SKU, or tracking code.
+                        No orders match this ledger view. Try another customer,
+                        product, tracking code, or payment filter.
                       </div>
                     ) : (
                       <div className="operations-orders-list">
@@ -2616,6 +2752,12 @@ export function OperationsPage({
                       const shippingSummary = splitShippingAddress(
                         order.shippingAddress,
                       );
+                      const paymentStatus = getPaymentStatus(order);
+                      const paymentTone = getPaymentStatusTone(paymentStatus);
+                      const paymentHeadline =
+                        getPaymentStatusHeadline(paymentStatus);
+                      const paymentDetail =
+                        getPaymentStatusDetail(paymentStatus);
 
                       return (
                         <motion.article
@@ -2640,11 +2782,18 @@ export function OperationsPage({
                               </p>
                             </div>
                             <div className="operations-order-card__summary-rail">
-                              <span
-                                className={`operations-pill operations-pill--${order.status}`}
-                              >
-                                {formatStatusLabel(order.status)}
-                              </span>
+                              <div className="operations-order-card__status-stack">
+                                <span
+                                  className={`operations-pill operations-pill--${order.status}`}
+                                >
+                                  {formatStatusLabel(order.status)}
+                                </span>
+                                <span
+                                  className={`operations-payment-chip operations-payment-chip--${paymentTone}`}
+                                >
+                                  {paymentHeadline}
+                                </span>
+                              </div>
                               <strong>
                                 {formatCurrency(order.totalAmount)}
                               </strong>
@@ -2659,9 +2808,12 @@ export function OperationsPage({
                             </div>
                             <div className="operations-order-card__snapshot-item">
                               <span>Payment</span>
-                              <strong>
-                                {formatStatusLabel(order.payment?.status)}
-                              </strong>
+                              <div
+                                className={`operations-payment-status operations-payment-status--${paymentTone}`}
+                              >
+                                <strong>{paymentHeadline}</strong>
+                                <small>{paymentDetail}</small>
+                              </div>
                             </div>
                             <div className="operations-order-card__snapshot-item">
                               <span>Shipping</span>

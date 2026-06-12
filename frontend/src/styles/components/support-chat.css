@@ -913,7 +913,9 @@ body.operations-pdf-export .support-chat {
 
 .support-chat__message--bot {
   border-color: rgba(116, 151, 198, 0.18);
-  background: rgba(116, 151, 198, 0.1);
+  background:
+    linear-gradient(135deg, rgba(116, 151, 198, 0.13), transparent 70%),
+    rgba(116, 151, 198, 0.08);
 }
 
 .support-chat__message-head {
@@ -982,6 +984,20 @@ body.operations-pdf-export .support-chat {
   border-radius: calc(var(--radius-card) - 0.55rem);
   background: rgba(0, 0, 0, 0.14);
   color: inherit;
+  transition:
+    transform var(--motion-fast),
+    border-color var(--motion-fast),
+    background-color var(--motion-fast),
+    box-shadow var(--motion-fast);
+}
+
+.support-chat__suggestion:hover {
+  transform: translateY(-1px);
+  border-color: rgba(207, 168, 125, 0.24);
+  background:
+    linear-gradient(135deg, rgba(207, 168, 125, 0.1), transparent 62%),
+    rgba(0, 0, 0, 0.16);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
 }
 
 .support-chat__suggestion-image {
@@ -989,7 +1005,10 @@ body.operations-pdf-export .support-chat {
   height: 2.55rem;
   border-radius: 0.55rem;
   object-fit: cover;
-  background: rgba(255, 255, 255, 0.06);
+  background:
+    radial-gradient(circle at 50% 18%, rgba(207, 168, 125, 0.14), transparent 58%),
+    rgba(255, 255, 255, 0.055);
+  filter: drop-shadow(0 0.55rem 0.75rem rgba(0, 0, 0, 0.24));
 }
 
 .support-chat__suggestion-image--empty {
@@ -1038,10 +1057,26 @@ body.operations-pdf-export .support-chat {
   padding: 0.5rem 0.65rem;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.035);
+  background:
+    linear-gradient(135deg, rgba(207, 168, 125, 0.07), transparent 68%),
+    rgba(255, 255, 255, 0.035);
   color: rgba(244, 236, 228, 0.74);
   font-size: 0.74rem;
   cursor: pointer;
+  transition:
+    transform var(--motion-fast),
+    border-color var(--motion-fast),
+    background-color var(--motion-fast),
+    color var(--motion-fast);
+}
+
+.support-chat__quick-row button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(207, 168, 125, 0.26);
+  background:
+    linear-gradient(135deg, rgba(207, 168, 125, 0.12), transparent 68%),
+    rgba(255, 255, 255, 0.045);
+  color: var(--color-pearl);
 }
 
 .support-chat__composer {

@@ -120,6 +120,7 @@ interface CheckoutPaymentController {
 }
 
 interface PreparedStripePayment extends PrepareCheckoutPaymentResponse {
+  detailsSignature: string;
   paymentMethod: Extract<PaymentMethod, "card" | "wallet">;
 }
 
@@ -164,6 +165,23 @@ function createCheckoutDetails(
     saveToAccount: false,
     shippingAddress: user?.address ?? "",
   };
+}
+
+function normalizeCheckoutDetails(
+  details: CheckoutDetailsInput,
+): CheckoutDetailsInput {
+  return {
+    deliveryNotes: details.deliveryNotes?.trim() ?? "",
+    email: details.email.trim(),
+    fullName: details.fullName.trim(),
+    phoneNumber: details.phoneNumber.trim(),
+    saveToAccount: Boolean(details.saveToAccount),
+    shippingAddress: details.shippingAddress.trim(),
+  };
+}
+
+function createCheckoutDetailsSignature(details: CheckoutDetailsInput): string {
+  return JSON.stringify(normalizeCheckoutDetails(details));
 }
 
 function validateCheckoutDetails(
@@ -404,7 +422,12 @@ export function CartPage() {
       return;
     }
 
-    if (preparedStripePayment?.paymentMethod === paymentMethod) {
+    const detailsSignature = createCheckoutDetailsSignature(checkoutDetails);
+
+    if (
+      preparedStripePayment?.paymentMethod === paymentMethod &&
+      preparedStripePayment.detailsSignature === detailsSignature
+    ) {
       return;
     }
 
@@ -413,7 +436,10 @@ export function CartPage() {
     setPaymentError(null);
 
     storefrontApi
-      .prepareCheckoutPayment({ paymentMethod })
+      .prepareCheckoutPayment({
+        details: normalizeCheckoutDetails(checkoutDetails),
+        paymentMethod,
+      })
       .then((result) => {
         if (!active) {
           return;
@@ -421,6 +447,7 @@ export function CartPage() {
 
         setPreparedStripePayment({
           ...result,
+          detailsSignature,
           paymentMethod,
         });
       })
@@ -449,6 +476,7 @@ export function CartPage() {
     };
   }, [
     checkoutMode,
+    checkoutDetails,
     checkoutStep,
     paymentMethod,
     preparedStripePayment,
@@ -656,7 +684,7 @@ export function CartPage() {
       }
 
       const result = await checkoutCart({
-        details: checkoutDetails,
+        details: normalizeCheckoutDetails(checkoutDetails),
         paymentIntentId,
         paymentMethod,
       });

@@ -2,6 +2,8 @@ import axios from "axios";
 
 import type {
   AddCartItemPayload,
+  AiConciergeRequest,
+  AiConciergeResponse,
   ApiResponse,
   AuthSession,
   CartRecord,
@@ -208,6 +210,11 @@ export const storefrontApi = {
   },
   async updateOrder(orderId: string, payload: UpdateOrderPayload): Promise<OrderRecord> {
     return unwrapResponse(api.patch<ApiResponse<OrderRecord>>(`/orders/${orderId}`, payload));
+  },
+  async askAiConcierge(payload: AiConciergeRequest): Promise<AiConciergeResponse> {
+    return unwrapResponse(
+      api.post<ApiResponse<AiConciergeResponse>>("/support/ai-concierge", payload),
+    );
   },
   async requestSignUpEmailOtp(payload: RequestEmailOtpPayload): Promise<EmailOtpResponse> {
     return unwrapResponse(

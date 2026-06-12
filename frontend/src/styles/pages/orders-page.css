@@ -1952,6 +1952,99 @@
   background: rgba(215, 177, 126, 0.12);
 }
 
+.operations-ledger-filters {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.operations-ledger-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  min-width: 0;
+  min-height: 2.7rem;
+  padding: 0.62rem 0.78rem;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 0.95rem;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.04), transparent 56%),
+    rgba(255, 255, 255, 0.022);
+  color: rgba(244, 236, 228, 0.66);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast),
+    background-color var(--motion-fast),
+    color var(--motion-fast),
+    transform var(--motion-fast),
+    box-shadow var(--motion-fast);
+}
+
+.operations-ledger-filter:hover {
+  transform: translateY(-1px);
+  border-color: rgba(215, 177, 126, 0.18);
+  background:
+    linear-gradient(135deg, rgba(215, 177, 126, 0.07), transparent 56%),
+    rgba(255, 255, 255, 0.03);
+  color: var(--color-pearl);
+}
+
+.operations-ledger-filter span {
+  overflow: hidden;
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.operations-ledger-filter strong {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  min-height: 1.65rem;
+  padding: 0.24rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--color-pearl);
+  font-size: 0.74rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.operations-ledger-filter--active {
+  transform: translateY(-1px);
+  color: var(--color-pearl);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.16);
+}
+
+.operations-ledger-filter--all.operations-ledger-filter--active,
+.operations-ledger-filter--processing.operations-ledger-filter--active {
+  border-color: rgba(215, 177, 126, 0.26);
+  background:
+    linear-gradient(135deg, rgba(215, 177, 126, 0.12), transparent 58%),
+    rgba(215, 177, 126, 0.045);
+}
+
+.operations-ledger-filter--paid.operations-ledger-filter--active {
+  border-color: rgba(134, 201, 161, 0.28);
+  background:
+    linear-gradient(135deg, rgba(134, 201, 161, 0.12), transparent 58%),
+    rgba(134, 201, 161, 0.045);
+}
+
+.operations-ledger-filter--failed.operations-ledger-filter--active {
+  border-color: rgba(219, 141, 141, 0.28);
+  background:
+    linear-gradient(135deg, rgba(219, 141, 141, 0.12), transparent 58%),
+    rgba(219, 141, 141, 0.045);
+}
+
 .operations-orders-list {
   display: grid;
   gap: 1rem;
@@ -2132,6 +2225,13 @@
   justify-content: flex-start;
 }
 
+.operations-order-card__status-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
 .operations-order-card__summary-rail strong {
   color: var(--color-pearl);
   font-family: var(--font-display);
@@ -2139,6 +2239,40 @@
   font-weight: 400;
   line-height: 1;
   white-space: nowrap;
+}
+
+.operations-payment-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(244, 236, 228, 0.72);
+  font-size: 0.62rem;
+  letter-spacing: 0.15em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.operations-payment-chip--paid {
+  border-color: rgba(134, 201, 161, 0.2);
+  background: rgba(134, 201, 161, 0.11);
+  color: #caead5;
+}
+
+.operations-payment-chip--processing {
+  border-color: rgba(215, 177, 126, 0.22);
+  background: rgba(215, 177, 126, 0.11);
+  color: #f0d8b4;
+}
+
+.operations-payment-chip--failed {
+  border-color: rgba(219, 141, 141, 0.22);
+  background: rgba(219, 141, 141, 0.11);
+  color: #f0bcbc;
 }
 
 .operations-order-card__snapshot {
@@ -2163,6 +2297,56 @@
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.operations-payment-status {
+  display: grid;
+  gap: 0.24rem;
+  min-height: 3.15rem;
+  margin-top: 0.48rem;
+  padding: 0.62rem 0.68rem;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.operations-order-card__snapshot-item .operations-payment-status strong {
+  margin: 0;
+  color: var(--color-pearl);
+  font-size: 0.92rem;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.operations-payment-status small {
+  display: -webkit-box;
+  overflow: hidden;
+  color: rgba(244, 236, 228, 0.52);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.operations-payment-status--paid {
+  border-color: rgba(134, 201, 161, 0.18);
+  background:
+    linear-gradient(135deg, rgba(134, 201, 161, 0.1), transparent 58%),
+    rgba(134, 201, 161, 0.035);
+}
+
+.operations-payment-status--processing {
+  border-color: rgba(215, 177, 126, 0.18);
+  background:
+    linear-gradient(135deg, rgba(215, 177, 126, 0.1), transparent 58%),
+    rgba(215, 177, 126, 0.035);
+}
+
+.operations-payment-status--failed {
+  border-color: rgba(219, 141, 141, 0.2);
+  background:
+    linear-gradient(135deg, rgba(219, 141, 141, 0.11), transparent 58%),
+    rgba(219, 141, 141, 0.035);
 }
 
 .operations-order-card__snapshot-item p {
@@ -3647,6 +3831,10 @@
   .operations-ledger-toolbar__range {
     width: 100%;
     justify-content: center;
+  }
+
+  .operations-ledger-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .operations-ledger-size,

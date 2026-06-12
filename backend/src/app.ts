@@ -9,6 +9,8 @@ import { favoritesRouter } from "./routes/favorites";
 import { ordersRouter } from "./routes/orders";
 import { productsRouter } from "./routes/products";
 import { reviewsRouter } from "./routes/reviews";
+import { stripeWebhooksRouter } from "./routes/stripe-webhooks";
+import { supportRouter } from "./routes/support";
 
 export const app = express();
 
@@ -34,6 +36,11 @@ app.use(
     },
   }),
 );
+app.use(
+  "/api/webhooks/stripe",
+  express.raw({ type: "application/json" }),
+  stripeWebhooksRouter,
+);
 app.use(express.json({ limit: "8mb" }));
 
 app.get("/api/health", (_request, response) => {
@@ -52,6 +59,7 @@ app.use("/api/orders", ordersRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/cart", cartRouter);
 app.use("/api/favorites", favoritesRouter);
+app.use("/api/support", supportRouter);
 
 app.use((_request, response) => {
   response.status(404).json({ success: false, error: "Route not found." });

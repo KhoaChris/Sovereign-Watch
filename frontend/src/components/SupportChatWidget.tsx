@@ -57,11 +57,11 @@ import "../styles/components/support-chat.css";
 
 const CONVERSATION_PAGE_SIZE = 25;
 const QUICK_PROMPTS = [
-  "Rolex pricing",
-  "Find a dress watch",
-  "Shipping",
-  "Payment",
-  "Warranty",
+  "Rolex under $30k",
+  "40mm daily watch",
+  "Concierge picks under $25k",
+  "Shipping & authentication",
+  "Track my order",
 ];
 type ConversationStatusFilter = Extract<SupportConversationStatus, "open" | "archived">;
 type CustomerSupportChannel = SupportChatChannel;
@@ -158,14 +158,14 @@ function EmptyMessages({
         {isAdmin
           ? "Select a customer conversation."
           : isAiChannel
-            ? "Ask the AI assistant."
+            ? "Ask the AI concierge."
             : "Message the admin desk."}
       </p>
       <span>
         {isAdmin
           ? "New customer messages appear here in realtime."
           : isAiChannel
-            ? "Get instant help with price, product search, shipping, payment, or orders."
+            ? "Curated guidance for price, product fit, shipping, payment, and orders."
             : "A live admin can review your request and reply in realtime."}
       </span>
     </div>
@@ -192,7 +192,7 @@ function MessageBubble({
     >
       <div className="support-chat__message-head">
         <span>
-          {message.senderName || (isBot ? "Sovereign bot" : "Client")}
+          {message.senderName || (isBot ? "Sovereign AI Concierge" : "Client")}
           {viewerRole === "admin" ? (
             <em className="support-chat__message-channel">{channelLabel}</em>
           ) : null}
@@ -349,21 +349,21 @@ export function SupportChatWidget() {
     ? "Admin online"
     : adminPresence.online
       ? "Admin online"
-      : "AI available";
+      : "AI concierge";
   const headerTitle = isAdmin
     ? "Live desk"
     : activeCustomerChannel === "admin"
       ? adminPresence.online
         ? "Admin online"
         : "Admin offline"
-      : "AI assistant";
+      : "AI concierge";
   const statusLabel = isAdmin
     ? "Admin online"
     : activeCustomerChannel === "admin"
       ? adminPresence.online
         ? "Admin online"
         : "Admin offline"
-      : "AI assistant ready";
+      : "Concierge ready";
 
   useEffect(() => {
     let active = true;
@@ -979,7 +979,7 @@ export function SupportChatWidget() {
                         <Bot className="support-chat__icon" />
                       </span>
                       <span className="support-chat__channel-copy">
-                        <strong>AI assistant</strong>
+                        <strong>AI concierge</strong>
                         <small>Always available</small>
                       </span>
                       <em className="support-chat__channel-badge support-chat__channel-badge--online">
@@ -1185,7 +1185,7 @@ export function SupportChatWidget() {
                           ? "Reply to the selected customer"
                           : activeCustomerChannel === "admin"
                             ? "Message the admin desk"
-                            : "Ask the AI assistant"
+                            : "Ask the AI concierge"
                       }
                       rows={2}
                       value={messageDraft}

@@ -67,6 +67,14 @@ interface BotReply {
   suggestions: SupportChatProductSuggestion[];
 }
 
+interface ConciergeIntent {
+  budgetMax?: number;
+  budgetMin?: number;
+  occasion: "collector" | "daily" | "formal" | "sport" | null;
+  size?: string;
+  wantsAvailableOnly: boolean;
+}
+
 export type SupportConversationPageCursor = QueryDocumentSnapshot<DocumentData>;
 
 const ADMIN_PRESENCE_DOC_ID = "admin";
@@ -176,6 +184,27 @@ const CONTACT_KEYWORDS = [
 const GREETING_KEYWORDS = ["alo", "chao", "chào", "hello", "hi", "xin chao", "xin chào"];
 const SIZE_KEYWORDS = ["36mm", "38mm", "40mm", "41mm", "42mm", "size", "wrist"];
 const DRESS_WATCH_KEYWORDS = ["dress", "dress watch", "formal", "lich su", "lịch sự"];
+const AVAILABLE_ONLY_KEYWORDS = [
+  "available now",
+  "available",
+  "co hang",
+  "có hàng",
+  "in stock",
+  "ready",
+  "san hang",
+  "sẵn hàng",
+];
+const DAILY_WATCH_KEYWORDS = ["daily", "everyday", "wear daily", "hằng ngày", "hang ngay"];
+const SPORT_WATCH_KEYWORDS = ["chrono", "chronograph", "sport", "sports", "rubber"];
+const COLLECTOR_WATCH_KEYWORDS = [
+  "allocation",
+  "collector",
+  "investment",
+  "limited",
+  "rare",
+  "suu tam",
+  "sưu tầm",
+];
 
 const SEARCH_STOP_WORDS = [
   "available",
@@ -436,12 +465,33 @@ function formatPrice(value: number | null): string {
   }).format(value);
 }
 
+function getTotalProductStock(product: ProductRecord): number {
+  return product.variants.reduce(
+    (total, variant) => total + Math.max(0, variant.stockQuantity),
+    0,
+  );
+}
+
+function getProductStockLabel(product: ProductRecord): string {
+  const stock = getTotalProductStock(product);
+
+  if (stock <= 0) {
+    return "Sold out";
+  }
+
+  if (stock <= 2) {
+    return `${stock} left`;
+  }
+
+  return `${stock} in stock`;
+}
+
 function productToSuggestion(product: ProductRecord): SupportChatProductSuggestion {
   return {
     href: `/collection/${product.id}`,
     image: product.images[0] ?? "",
     name: product.name,
-    priceLabel: formatPrice(getLowestProductPrice(product)),
+    priceLabel: `${formatPrice(getLowestProductPrice(product))} · ${getProductStockLabel(product)}`,
     productId: product.id,
     type: product.type,
   };
@@ -540,24 +590,210 @@ function extractSearchTerm(body: string): string {
     .trim();
 }
 
+function parseMoneyAmount(rawAmount: string, suffix = ""): number | null {
+  const cleaned = rawAmount.replace(/,/g, "").trim();
+  const amount = Number(cleaned);
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return null;
+  }
+
+  if (/k|thousand/i.test(suffix) || amount < 1_000) {
+    return Math.round(amount * 1_000);
+  }
+
+  return Math.round(amount);
+}
+
+function extractBudgetIntent(body: string): Pick<ConciergeIntent, "budgetMax" | "budgetMin"> {
+  const text = normalizeForSearch(body);
+  const amountPattern = "(\\d+(?:[,.]\\d{3})*|\\d+(?:\\.\\d+)?)\\s*(k|thousand)?";
+  const rangeMatch = text.match(
+    new RegExp(`(?:between|from|tu|từ)\\s+${amountPattern}\\s*(?:-|to|and|den|đến)\\s*${amountPattern}(?!\\s*mm)`, "i"),
+  );
+
+  if (rangeMatch) {
+    const first = parseMoneyAmount(rangeMatch[1], rangeMatch[2]);
+    const second = parseMoneyAmount(rangeMatch[3], rangeMatch[4]);
+
+    if (first && second) {
+      return {
+        budgetMax: Math.max(first, second),
+        budgetMin: Math.min(first, second),
+      };
+    }
+  }
+
+  const maxMatch = text.match(
+    new RegExp(`(?:under|below|less than|up to|max|budget|duoi|dưới)\\s*(?:usd|\\$)?\\s*${amountPattern}(?!\\s*mm)`, "i"),
+  );
+  const minMatch = text.match(
+    new RegExp(`(?:over|above|from|min|tren|trên)\\s*(?:usd|\\$)?\\s*${amountPattern}(?!\\s*mm)`, "i"),
+  );
+  const budgetMax = maxMatch ? parseMoneyAmount(maxMatch[1], maxMatch[2]) : null;
+  const budgetMin = minMatch ? parseMoneyAmount(minMatch[1], minMatch[2]) : null;
+
+  return {
+    ...(budgetMax ? { budgetMax } : {}),
+    ...(budgetMin ? { budgetMin } : {}),
+  };
+}
+
+function extractSizeIntent(body: string): string | undefined {
+  const match = normalizeForSearch(body).match(/\b(2[8-9]|3[0-9]|4[0-9]|5[0-2])\s*mm\b/);
+
+  return match ? `${match[1]}mm` : undefined;
+}
+
+function extractOccasionIntent(body: string): ConciergeIntent["occasion"] {
+  if (includesAnyKeyword(body, DRESS_WATCH_KEYWORDS)) {
+    return "formal";
+  }
+
+  if (includesAnyKeyword(body, SPORT_WATCH_KEYWORDS)) {
+    return "sport";
+  }
+
+  if (includesAnyKeyword(body, COLLECTOR_WATCH_KEYWORDS)) {
+    return "collector";
+  }
+
+  if (includesAnyKeyword(body, DAILY_WATCH_KEYWORDS)) {
+    return "daily";
+  }
+
+  return null;
+}
+
+function buildConciergeIntent(body: string): ConciergeIntent {
+  return {
+    ...extractBudgetIntent(body),
+    occasion: extractOccasionIntent(body),
+    size: extractSizeIntent(body),
+    wantsAvailableOnly: includesAnyKeyword(body, AVAILABLE_ONLY_KEYWORDS),
+  };
+}
+
+function buildConciergeQueryLabel(intent: ConciergeIntent, fallback: string): string {
+  const details = [
+    intent.occasion ? `${intent.occasion} use` : null,
+    intent.size ? intent.size : null,
+    intent.budgetMin && intent.budgetMax
+      ? `${formatPrice(intent.budgetMin)}-${formatPrice(intent.budgetMax)}`
+      : intent.budgetMax
+        ? `under ${formatPrice(intent.budgetMax)}`
+        : intent.budgetMin
+          ? `from ${formatPrice(intent.budgetMin)}`
+          : null,
+    intent.wantsAvailableOnly ? "available inventory" : null,
+  ].filter(Boolean);
+
+  return details.length > 0 ? details.join(", ") : fallback;
+}
+
+function productMatchesOccasion(
+  product: ProductRecord,
+  occasion: ConciergeIntent["occasion"],
+): boolean {
+  if (!occasion) {
+    return false;
+  }
+
+  const haystack = normalizeForSearch(
+    `${product.name} ${product.description} ${product.type} ${product.brandId} ${product.categoryId}`,
+  );
+
+  if (occasion === "formal") {
+    return ["dress", "heritage", "classic", "luxury", "oyster"].some((keyword) =>
+      haystack.includes(keyword),
+    );
+  }
+
+  if (occasion === "sport") {
+    return ["sport", "chrono", "chronograph", "rubber", "hublot", "daytona"].some((keyword) =>
+      haystack.includes(keyword),
+    );
+  }
+
+  if (occasion === "collector") {
+    return ["limited", "rare", "heritage", "rolex", "hublot"].some((keyword) =>
+      haystack.includes(keyword),
+    );
+  }
+
+  return ["daily", "classic", "luxury", "oyster", "sport"].some((keyword) =>
+    haystack.includes(keyword),
+  );
+}
+
+function scoreConciergeProduct(
+  product: ProductRecord,
+  intent: ConciergeIntent,
+): number {
+  const price = getLowestProductPrice(product);
+  let score = 0;
+
+  if (getTotalProductStock(product) > 0) {
+    score += 35;
+  } else if (intent.wantsAvailableOnly) {
+    score -= 80;
+  }
+
+  if (price !== null) {
+    if (intent.budgetMin !== undefined && price >= intent.budgetMin) {
+      score += 12;
+    }
+
+    if (intent.budgetMax !== undefined && price <= intent.budgetMax) {
+      score += 18;
+    }
+
+    if (intent.budgetMax !== undefined && price > intent.budgetMax) {
+      score -= 20;
+    }
+  }
+
+  if (
+    intent.size &&
+    product.variants.some((variant) => normalizeForSearch(variant.size) === normalizeForSearch(intent.size ?? ""))
+  ) {
+    score += 18;
+  }
+
+  if (productMatchesOccasion(product, intent.occasion)) {
+    score += 16;
+  }
+
+  return score;
+}
+
 async function getProductMatches(body: string): Promise<{
+  intent: ConciergeIntent;
   label: string;
   products: ProductRecord[];
   searchTerm: string;
   wasExactMatch: boolean;
 }> {
   const searchTerm = extractSearchTerm(body);
+  const intent = buildConciergeIntent(body);
   const sort = includesAnyKeyword(body, PRICE_KEYWORDS) ? "price-asc" : "newest";
   const initialDiscovery = await storefrontApi.getProductDiscovery({
     availability: "all",
+    priceMax: intent.budgetMax,
+    priceMin: intent.budgetMin,
     search: searchTerm || undefined,
+    size: intent.size,
     sort,
   });
 
   if (initialDiscovery.items.length > 0) {
     return {
-      label: searchTerm || "your request",
-      products: initialDiscovery.items,
+      intent,
+      label: buildConciergeQueryLabel(intent, searchTerm || "your request"),
+      products: [...initialDiscovery.items].sort(
+        (left, right) =>
+          scoreConciergeProduct(right, intent) - scoreConciergeProduct(left, intent),
+      ),
       searchTerm,
       wasExactMatch: true,
     };
@@ -569,12 +805,19 @@ async function getProductMatches(body: string): Promise<{
     const brandDiscovery = await storefrontApi.getProductDiscovery({
       availability: "all",
       brand: brandMatch.id,
+      priceMax: intent.budgetMax,
+      priceMin: intent.budgetMin,
+      size: intent.size,
       sort,
     });
 
     return {
+      intent,
       label: brandMatch.label,
-      products: brandDiscovery.items,
+      products: [...brandDiscovery.items].sort(
+        (left, right) =>
+          scoreConciergeProduct(right, intent) - scoreConciergeProduct(left, intent),
+      ),
       searchTerm,
       wasExactMatch: brandDiscovery.items.length > 0,
     };
@@ -586,12 +829,19 @@ async function getProductMatches(body: string): Promise<{
     const categoryDiscovery = await storefrontApi.getProductDiscovery({
       availability: "all",
       category: categoryMatch.id,
+      priceMax: intent.budgetMax,
+      priceMin: intent.budgetMin,
+      size: intent.size,
       sort,
     });
 
     return {
+      intent,
       label: categoryMatch.label,
-      products: categoryDiscovery.items,
+      products: [...categoryDiscovery.items].sort(
+        (left, right) =>
+          scoreConciergeProduct(right, intent) - scoreConciergeProduct(left, intent),
+      ),
       searchTerm,
       wasExactMatch: categoryDiscovery.items.length > 0,
     };
@@ -600,6 +850,9 @@ async function getProductMatches(body: string): Promise<{
   if (includesAnyKeyword(body, DRESS_WATCH_KEYWORDS)) {
     const allDiscovery = await storefrontApi.getProductDiscovery({
       availability: "all",
+      priceMax: intent.budgetMax,
+      priceMin: intent.budgetMin,
+      size: intent.size,
       sort: "price-asc",
     });
 
@@ -617,14 +870,52 @@ async function getProductMatches(body: string): Promise<{
     });
 
     return {
+      intent,
       label: "dress watch",
-      products: dressLikeProducts.length > 0 ? dressLikeProducts : allDiscovery.items,
+      products: [...(dressLikeProducts.length > 0 ? dressLikeProducts : allDiscovery.items)].sort(
+        (left, right) =>
+          scoreConciergeProduct(right, intent) - scoreConciergeProduct(left, intent),
+      ),
       searchTerm,
       wasExactMatch: dressLikeProducts.length > 0,
     };
   }
 
+  if (
+    intent.occasion ||
+    intent.size ||
+    intent.budgetMax !== undefined ||
+    intent.budgetMin !== undefined
+  ) {
+    const discovery = await storefrontApi.getProductDiscovery({
+      availability: "all",
+      priceMax: intent.budgetMax,
+      priceMin: intent.budgetMin,
+      size: intent.size,
+      sort,
+    });
+    const occasionProducts = intent.occasion
+      ? discovery.items.filter((product) =>
+          productMatchesOccasion(product, intent.occasion),
+        )
+      : discovery.items;
+    const products =
+      occasionProducts.length > 0 ? occasionProducts : discovery.items;
+
+    return {
+      intent,
+      label: buildConciergeQueryLabel(intent, searchTerm || "your request"),
+      products: [...products].sort(
+        (left, right) =>
+          scoreConciergeProduct(right, intent) - scoreConciergeProduct(left, intent),
+      ),
+      searchTerm,
+      wasExactMatch: occasionProducts.length > 0 || discovery.items.length > 0,
+    };
+  }
+
   return {
+    intent,
     label: searchTerm || "your request",
     products: [],
     searchTerm,
@@ -648,7 +939,9 @@ async function buildBotReply(body: string): Promise<BotReply> {
 
   if (asksAboutShipping) {
     return {
-      body: "Shipping is confirmed by the desk based on the delivery address and order status. If your order already has tracking, open Orders for updates; for returns, review Shipping & Returns.",
+      body: asksAboutAuthenticity
+        ? "Concierge note: delivery and documentation are reviewed together. Shipping is confirmed from the order address, while authenticity is checked through card, serial, condition photos, and service history."
+        : "Concierge note: shipping is confirmed by delivery address and order status. If tracking has been issued, Orders is the fastest place to review movement; returns are covered in Shipping & Returns.",
       suggestions: [
         pageSuggestion({
           href: "/shipping-returns",
@@ -662,18 +955,28 @@ async function buildBotReply(body: string): Promise<BotReply> {
           priceLabel: "Track status",
           productId: "orders",
         }),
+        ...(asksAboutAuthenticity
+          ? [
+              pageSuggestion({
+                href: "/client-services",
+                name: "Client Services",
+                priceLabel: "Authentication",
+                productId: "client-services",
+              }),
+            ]
+          : []),
       ],
     };
   }
 
   if (asksAboutPayment) {
     return {
-      body: "Checkout currently supports card and wallet payments through Stripe, plus COD for selected cases. Bank transfer is temporarily disabled until reconciliation is fully handled.",
+      body: "Concierge note: card and wallet payments are handled by Stripe and sync back to the order ledger after payment confirmation. COD remains available for selected cases; bank transfer is intentionally locked until reconciliation is fully handled.",
       suggestions: [
         pageSuggestion({
           href: "/cart",
           name: "Reserve Cart",
-          priceLabel: "Checkout",
+          priceLabel: "Secure checkout",
           productId: "cart",
         }),
       ],
@@ -682,7 +985,7 @@ async function buildBotReply(body: string): Promise<BotReply> {
 
   if (asksAboutOrder) {
     return {
-      body: "Open Orders to review reserve, payment, and shipping status. If you need a desk check, send the order number or checkout email in this chat.",
+      body: "Concierge note: Orders shows reserve, payment, and shipping status in one ledger. Send the order number or checkout email here if you want the live desk to review a specific movement.",
       suggestions: [
         pageSuggestion({
           href: "/orders",
@@ -697,8 +1000,8 @@ async function buildBotReply(body: string): Promise<BotReply> {
   if (asksAboutWarranty || asksAboutAuthenticity) {
     return {
       body: asksAboutAuthenticity
-        ? "For authenticity and documentation, the desk confirms each watch by serial, card, box, service history, and detailed photos. Send a model or reference and I can suggest related pieces first."
-        : "For warranty or service questions, the desk checks the exact watch and handover condition. Send the model or reference to confirm the available support scope.",
+        ? "Concierge note: authenticity is reviewed by serial, card, box, service history, and detailed photos. Send a model or reference and I can narrow comparable inventory first."
+        : "Concierge note: warranty and service scope depends on the exact watch, condition, and handover record. Send the model or reference to confirm the available support path.",
       suggestions: [
         pageSuggestion({
           href: "/client-services",
@@ -718,25 +1021,29 @@ async function buildBotReply(body: string): Promise<BotReply> {
 
   if (asksAboutProducts) {
     const result = await getProductMatches(body);
-    const suggestions = result.products.slice(0, 3).map(productToSuggestion);
+    const visibleProducts = result.intent.wantsAvailableOnly
+      ? result.products.filter((product) => getTotalProductStock(product) > 0)
+      : result.products;
+    const suggestions = visibleProducts.slice(0, 3).map(productToSuggestion);
 
     if (suggestions.length > 0) {
-      const priceRange = getProductPriceRange(result.products);
-      const inventory = describeInventory(result.products);
+      const priceRange = getProductPriceRange(visibleProducts);
+      const inventory = describeInventory(visibleProducts);
+      const brief = buildConciergeQueryLabel(result.intent, result.label);
       const lead = result.wasExactMatch
-        ? `I found ${result.products.length} ${result.label} option${result.products.length === 1 ? "" : "s"}`
+        ? `I found ${visibleProducts.length} option${visibleProducts.length === 1 ? "" : "s"} for ${brief}`
         : `I did not find an exact match for "${result.searchTerm || body}", but these are the closest options`;
 
       return {
         body: includesAnyKeyword(body, PRICE_KEYWORDS)
-          ? `${lead}. The current indicative range is ${priceRange}; inventory is ${inventory}. The desk will confirm final pricing and availability when online.`
-          : `${lead}. I added up to 3 suggestions below so you can open details, sizes, and availability quickly.`,
+          ? `Concierge brief: ${lead}. Indicative range: ${priceRange}. Inventory: ${inventory}. Final pricing and allocation can still be confirmed by the desk.`
+          : `Concierge brief: ${lead}. I ranked the list by availability, budget fit, size, and use case, then attached the strongest matches below.`,
         suggestions,
       };
     }
 
     return {
-      body: "I could not find a clear match in the current inventory. Send a brand, reference, case size, or target budget and I will narrow the search.",
+      body: "Concierge brief: I could not find a clean match in current inventory. Send a brand, reference, case size, budget, or use case like daily, formal, sport, or collector and I will narrow it again.",
       suggestions: [
         pageSuggestion({
           href: "/collection",
@@ -750,7 +1057,7 @@ async function buildBotReply(body: string): Promise<BotReply> {
 
   if (asksForContact) {
     return {
-      body: "I noted that you would like desk support. When an admin is online, this conversation moves to the live desk; you can leave a phone number, order number, or watch reference here.",
+      body: "I noted that you would like desk support. When an admin is online, this conversation can move to the live desk; leave a phone number, order number, or watch reference here so the handoff has context.",
       suggestions: [
         pageSuggestion({
           href: "/contact",
@@ -764,7 +1071,7 @@ async function buildBotReply(body: string): Promise<BotReply> {
 
   if (saysHello) {
     return {
-      body: "Hello, I am the Sovereign support bot. I can help with pricing, product search, shipping, payment, orders, warranty, and documentation before the live desk joins.",
+      body: "Hello, I am the Sovereign AI Concierge. I can narrow watches by budget, size, occasion, availability, and payment or shipping context before the live desk joins.",
       suggestions: [
         pageSuggestion({
           href: "/collection",
@@ -783,7 +1090,7 @@ async function buildBotReply(body: string): Promise<BotReply> {
   }
 
   return {
-    body: "I have noted your message. Try prompts like “Rolex pricing”, “Find a dress watch”, “Shipping”, “Pay by card”, “Check my order”, or “How does warranty work?”.",
+    body: "I have noted your message. For a sharper concierge match, send a brand, reference, case size, budget, use case, order number, or shipping question.",
     suggestions: [
       pageSuggestion({
         href: "/collection",
@@ -793,6 +1100,33 @@ async function buildBotReply(body: string): Promise<BotReply> {
       }),
     ],
   };
+}
+
+async function buildAiConciergeReply(body: string): Promise<BotReply> {
+  try {
+    const reply = await storefrontApi.askAiConcierge({ message: body });
+
+    return {
+      body: reply.body,
+      suggestions: reply.suggestions,
+    };
+  } catch {
+    try {
+      return await buildBotReply(body);
+    } catch {
+      return {
+        body: "I have noted your message. The concierge context service is temporarily unavailable, but your message is saved here for the desk.",
+        suggestions: [
+          pageSuggestion({
+            href: "/contact",
+            name: "Contact Desk",
+            priceLabel: "Human support",
+            productId: "contact",
+          }),
+        ],
+      };
+    }
+  }
 }
 
 function conversationRef(conversationId: string) {
@@ -992,7 +1326,7 @@ export async function sendCustomerSupportMessage({
     return;
   }
 
-  const botReply = await buildBotReply(trimmedBody);
+  const botReply = await buildAiConciergeReply(trimmedBody);
 
   await addDoc(messagesRef(user.id), {
     body: botReply.body,
@@ -1001,7 +1335,7 @@ export async function sendCustomerSupportMessage({
     createdAt: serverTimestamp(),
     moderationFlags: [],
     senderId: "support-bot",
-    senderName: "Sovereign bot",
+    senderName: "Sovereign AI Concierge",
     senderRole: "bot",
     suggestions: botReply.suggestions,
   });
