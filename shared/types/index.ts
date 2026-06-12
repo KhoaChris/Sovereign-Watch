@@ -444,10 +444,27 @@ export interface UpdateUserProfilePayload {
   avatarUrl?: string | null;
   phoneNumber?: string;
   address?: string;
+  email?: string;
+  emailOtpCode?: string;
 }
 
 export interface AuthSession {
   user: AuthUserProfile;
+}
+
+export interface RequestEmailOtpPayload {
+  email: string;
+}
+
+export interface VerifyEmailOtpPayload {
+  email: string;
+  code: string;
+}
+
+export interface EmailOtpResponse {
+  email: string;
+  expiresInSeconds: number;
+  resendAvailableInSeconds: number;
 }
 
 export interface AddCartItemPayload {

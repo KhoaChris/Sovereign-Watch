@@ -104,6 +104,24 @@
   margin-top: 1.4rem;
 }
 
+.auth-modal__otp-panel {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.55rem 0.62rem;
+  border: 1px solid rgba(207, 168, 125, 0.14);
+  border-radius: 1rem;
+  background:
+    linear-gradient(180deg, rgba(207, 168, 125, 0.055), transparent),
+    rgba(255, 255, 255, 0.025);
+}
+
+.auth-modal__otp-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
 .auth-modal__field {
   display: grid;
   gap: 0.7rem;
@@ -130,15 +148,99 @@
   box-shadow: 0 0 0 4px rgba(207, 168, 125, 0.1);
 }
 
-.auth-modal__error {
+.auth-modal__input:disabled {
+  opacity: 0.54;
+  cursor: not-allowed;
+}
+
+.auth-modal__input--otp {
+  min-height: 2.35rem;
+  max-width: 8.5rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.9rem;
+  font-size: 0.88rem;
+  letter-spacing: 0.2em;
+  text-align: center;
+}
+
+.auth-modal__otp-code-field {
+  display: grid;
+  grid-template-columns: auto minmax(7.5rem, 8.5rem);
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.auth-modal__otp-code-field span,
+.auth-modal__otp-meta {
+  color: rgba(244, 236, 228, 0.62);
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.auth-modal__otp-meta {
+  margin-left: auto;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+}
+
+.auth-modal__error,
+.auth-modal__message {
   margin: 0;
+  padding-inline: 0.15rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.auth-modal__error {
   color: #efb8b8;
-  font-size: 0.9rem;
+}
+
+.auth-modal__message {
+  color: #a8e6c1;
 }
 
 .auth-modal__submit,
-.auth-modal__switch {
+.auth-modal__switch,
+.auth-modal__inline-action {
   border: 0;
+}
+
+.auth-modal__inline-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: start;
+  gap: 0.5rem;
+  min-height: 2.35rem;
+  padding: 0.58rem 0.85rem;
+  border: 1px solid rgba(207, 168, 125, 0.22);
+  border-radius: var(--radius-pill);
+  background: rgba(207, 168, 125, 0.1);
+  color: var(--color-pearl);
+  font-size: 0.58rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  transition:
+    transform var(--motion-fast),
+    border-color var(--motion-fast),
+    background-color var(--motion-fast);
+}
+
+.auth-modal__inline-action:hover {
+  transform: translateY(-1px);
+  border-color: rgba(207, 168, 125, 0.46);
+  background: rgba(207, 168, 125, 0.16);
+}
+
+.auth-modal__inline-action:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .auth-modal__submit {
@@ -201,6 +303,25 @@
 
   .auth-modal__dialog {
     padding: 1.15rem;
+  }
+
+  .auth-modal__otp-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .auth-modal__otp-code-field {
+    grid-template-columns: 1fr;
+    margin-left: 0;
+  }
+
+  .auth-modal__input--otp {
+    max-width: none;
+  }
+
+  .auth-modal__otp-meta {
+    margin-left: 0;
+    text-align: left;
   }
 
   .auth-modal__footer {

@@ -2,8 +2,15 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { LoaderCircle, X } from "lucide-react";
 
+import { storefrontApi } from "../services/api";
 import { useStorefront } from "../storefront/storefront-context";
 import "../styles/components/auth-modal.css";
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function isValidEmailAddress(value: string): boolean {
+  return EMAIL_PATTERN.test(value);
+}
 
 function AuthModalContent({
   authBusy,
@@ -20,17 +27,77 @@ function AuthModalContent({
   closeAuthModal: () => void;
   openAuthModal: (mode?: "sign-in" | "sign-up") => void;
   signIn: (credentials: { email: string; password: string }) => Promise<void>;
-  signUp: (credentials: { email: string; fullName: string; password: string }) => Promise<void>;
+  signUp: (credentials: {
+    email: string;
+    emailOtpCode: string;
+    fullName: string;
+    password: string;
+  }) => Promise<void>;
 }) {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
+  const [otpBusy, setOtpBusy] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [otpMessage, setOtpMessage] = useState<string | null>(null);
+  const [otpSentEmail, setOtpSentEmail] = useState("");
   const [password, setPassword] = useState("");
   const isSignUp = authMode === "sign-up";
+  const normalizedEmail = email.trim().toLowerCase();
+  const otpReady = otpSentEmail === normalizedEmail;
+
+  async function handleRequestOtp(): Promise<void> {
+    if (!normalizedEmail) {
+      setOtpError("Enter your email before requesting a code.");
+      return;
+    }
+
+    if (!isValidEmailAddress(normalizedEmail)) {
+      setOtpError("Enter a valid email address before requesting a code.");
+      return;
+    }
+
+    setOtpBusy(true);
+    setOtpError(null);
+    setOtpMessage(null);
+
+    try {
+      const result = await storefrontApi.requestSignUpEmailOtp({
+        email: normalizedEmail,
+      });
+      setOtpSentEmail(result.email);
+      setOtpCode("");
+      setOtpMessage(
+        `A 6-digit code was sent to ${result.email}. It expires in ${Math.round(
+          result.expiresInSeconds / 60,
+        )} minutes.`,
+      );
+    } catch (error) {
+      setOtpError(
+        error instanceof Error
+          ? error.message
+          : "Unable to send a verification code right now.",
+      );
+    } finally {
+      setOtpBusy(false);
+    }
+  }
 
   async function handleSubmit(): Promise<void> {
     if (isSignUp) {
+      if (!/^\d{6}$/.test(otpCode.trim())) {
+        setOtpError("Enter the 6-digit code sent to your email.");
+        return;
+      }
+
+      if (!otpReady) {
+        setOtpError("Send a verification code to this email before continuing.");
+        return;
+      }
+
       await signUp({
         email,
+        emailOtpCode: otpCode.trim(),
         fullName,
         password,
       });
@@ -83,6 +150,7 @@ function AuthModalContent({
               className="auth-modal__input"
               onChange={(event) => setFullName(event.target.value)}
               placeholder="Your full name"
+              required
               value={fullName}
             />
           </label>
@@ -93,12 +161,62 @@ function AuthModalContent({
           <input
             autoComplete="email"
             className="auth-modal__input"
-            onChange={(event) => setEmail(event.target.value)}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              setOtpCode("");
+              setOtpError(null);
+              setOtpMessage(null);
+              setOtpSentEmail("");
+            }}
             placeholder="you@example.com"
+            required
             type="email"
             value={email}
           />
         </label>
+
+        {isSignUp ? (
+          <div className="auth-modal__otp-panel">
+            <div className="auth-modal__otp-controls">
+              <button
+                className="auth-modal__inline-action"
+                disabled={authBusy || otpBusy || !normalizedEmail}
+                onClick={() => {
+                  void handleRequestOtp();
+                }}
+                type="button"
+              >
+                {otpBusy ? (
+                  <LoaderCircle className="auth-modal__submit-icon auth-modal__submit-icon--spinning" />
+                ) : null}
+                {otpReady ? "Resend code" : "Send OTP"}
+              </button>
+
+              <label className="auth-modal__otp-code-field">
+                <span>Code</span>
+                <input
+                  autoComplete="one-time-code"
+                  className="auth-modal__input auth-modal__input--otp"
+                  disabled={!otpReady}
+                  inputMode="numeric"
+                  maxLength={6}
+                  onChange={(event) =>
+                    setOtpCode(event.target.value.replace(/\D/g, ""))
+                  }
+                  pattern="[0-9]{6}"
+                  placeholder={otpReady ? "000000" : "------"}
+                  required={otpReady}
+                  value={otpCode}
+                />
+              </label>
+            </div>
+
+            {otpMessage ? (
+              <p className="auth-modal__message">{otpMessage}</p>
+            ) : null}
+            {otpError ? <p className="auth-modal__error">{otpError}</p> : null}
+          </div>
+        ) : null}
 
         <label className="auth-modal__field">
           <span>Password</span>
@@ -107,6 +225,8 @@ function AuthModalContent({
             className="auth-modal__input"
             onChange={(event) => setPassword(event.target.value)}
             placeholder="Enter your password"
+            minLength={6}
+            required
             type="password"
             value={password}
           />
@@ -114,7 +234,7 @@ function AuthModalContent({
 
         {authError ? <p className="auth-modal__error">{authError}</p> : null}
 
-        <button className="auth-modal__submit" disabled={authBusy} type="submit">
+        <button className="auth-modal__submit" disabled={authBusy || otpBusy} type="submit">
           {authBusy ? <LoaderCircle className="auth-modal__submit-icon auth-modal__submit-icon--spinning" /> : null}
           {authBusy ? "Processing" : isSignUp ? "Create account" : "Sign in"}
         </button>

@@ -1,7 +1,7 @@
 import type { DecodedIdToken } from "firebase-admin/auth";
 
 import { env } from "../config/env";
-import { getDb } from "../config/firebase";
+import { getAdminAuth, getDb } from "../config/firebase";
 import type {
   AuthUserProfile,
   SyncAuthSessionPayload,
@@ -9,10 +9,18 @@ import type {
   UserRole,
 } from "../shared";
 import { nowIsoString } from "../utils/dates";
+import { normalizeOtpEmail, verifyEmailOtp } from "./email-otp-service";
 
 const USERS_COLLECTION = "users";
 
-function isAdminEmail(email?: string): boolean {
+function createConflictError(message: string): Error & { statusCode: number } {
+  const error = new Error(message) as Error & { statusCode: number };
+  error.statusCode = 409;
+
+  return error;
+}
+
+export function isAdminEmail(email?: string): boolean {
   if (!email) {
     return false;
   }
@@ -63,16 +71,21 @@ function buildProfile(
   const fullName = payload.fullName?.trim();
   const phoneNumber = payload.phoneNumber?.trim();
   const address = payload.address?.trim();
+  const payloadEmail =
+    "email" in payload && typeof payload.email === "string"
+      ? normalizeOtpEmail(payload.email)
+      : undefined;
+  const email = payloadEmail || existing?.email || token.email || "";
 
   return {
     id: existing?.id ?? token.uid,
     firebaseUid: token.uid,
-    email: token.email ?? existing?.email ?? "",
+    email,
     fullName: fullName || existing?.fullName || fallbackFullName(token.email, token.name),
     avatarUrl: avatarUrl ?? existing?.avatarUrl ?? "",
     phoneNumber: phoneNumber ?? existing?.phoneNumber ?? "",
     address: address ?? existing?.address ?? "",
-    role: normalizeRole(existing?.role, token.email ?? existing?.email),
+    role: normalizeRole(existing?.role, email),
   };
 }
 
@@ -105,6 +118,44 @@ export async function getUserProfile(userId: string): Promise<AuthUserProfile | 
     ...profile,
     avatarUrl: profile.avatarUrl ?? "",
   };
+}
+
+export async function assertEmailAvailable(
+  email: string,
+  allowedFirebaseUid?: string,
+): Promise<void> {
+  const normalizedEmail = normalizeOtpEmail(email);
+
+  try {
+    const user = await getAdminAuth().getUserByEmail(normalizedEmail);
+
+    if (user.uid !== allowedFirebaseUid) {
+      throw createConflictError(
+        "This email is already registered in Firebase Authentication. Sign in with this email or use another email.",
+      );
+    }
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+
+    if (code !== "auth/user-not-found") {
+      throw error;
+    }
+  }
+
+  const snapshot = await getDb()
+    .collection(USERS_COLLECTION)
+    .where("email", "==", normalizedEmail)
+    .limit(2)
+    .get();
+  const conflictingProfile = snapshot.docs.find(
+    (document) => document.id !== allowedFirebaseUid,
+  );
+
+  if (conflictingProfile) {
+    throw createConflictError(
+      "This email is already registered in user profiles.",
+    );
+  }
 }
 
 export async function syncAuthenticatedUser(
@@ -146,7 +197,40 @@ export async function updateUserProfile(
   payload: UpdateUserProfilePayload,
 ): Promise<AuthUserProfile> {
   const existing = await getUserProfile(token.uid);
-  const nextProfile = buildProfile(existing, token, payload);
+  const currentEmail = normalizeOtpEmail(existing?.email || token.email || "");
+  const requestedEmail = payload.email ? normalizeOtpEmail(payload.email) : "";
+  const emailChanged =
+    requestedEmail.length > 0 && requestedEmail !== currentEmail;
+
+  if (emailChanged) {
+    if (existing?.role === "admin" || isAdminEmail(currentEmail)) {
+      throw new Error("Admin account email changes are disabled.");
+    }
+
+    if (isAdminEmail(requestedEmail)) {
+      throw new Error("Admin account email is reserved.");
+    }
+
+    if (!payload.emailOtpCode) {
+      throw new Error("Verify the new email before saving your profile.");
+    }
+
+    await assertEmailAvailable(requestedEmail, token.uid);
+    await verifyEmailOtp({
+      code: payload.emailOtpCode,
+      email: requestedEmail,
+      purpose: "profile_email_update",
+    });
+    await getAdminAuth().updateUser(token.uid, {
+      email: requestedEmail,
+      emailVerified: true,
+    });
+  }
+
+  const nextProfile = buildProfile(existing, token, {
+    ...payload,
+    email: emailChanged ? requestedEmail : existing?.email ?? token.email,
+  });
 
   if (!existing) {
     const createdAt = nowIsoString();

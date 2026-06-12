@@ -104,6 +104,17 @@ export async function signInWithEmailAndPassword(
   return toAuthTokens(response);
 }
 
+export async function signInWithCustomToken(
+  customToken: string,
+): Promise<FirebaseAuthTokens> {
+  const response = await authRequest("accounts:signInWithCustomToken", {
+    token: customToken,
+    returnSecureToken: true,
+  });
+
+  return toAuthTokens(response);
+}
+
 export async function createUserWithEmailAndPassword(
   fullName: string,
   email: string,

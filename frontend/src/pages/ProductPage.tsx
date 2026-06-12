@@ -997,7 +997,7 @@ export function ProductPage() {
                       </p>
                       <Link
                         className="product-page__secondary-action"
-                        to="/orders"
+                        to="/operations"
                       >
                         Open Operations
                       </Link>

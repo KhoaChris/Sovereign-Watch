@@ -68,7 +68,9 @@ app.use((error: unknown, _request: Request, response: Response, _next: NextFunct
   }
 
   if (error instanceof Error) {
-    response.status(500).json({
+    const statusCode = (error as { statusCode?: number }).statusCode;
+
+    response.status(statusCode ?? 500).json({
       success: false,
       error: error.message,
     });

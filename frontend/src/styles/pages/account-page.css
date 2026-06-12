@@ -413,7 +413,12 @@
   gap: 0.72rem;
 }
 
-.account-page__field span {
+.account-page__field--email {
+  position: relative;
+}
+
+.account-page__field span,
+.account-page__otp-field span {
   color: rgba(244, 236, 228, 0.74);
   font-size: 0.72rem;
   letter-spacing: 0.2em;
@@ -421,7 +426,8 @@
 }
 
 .account-page__field input,
-.account-page__field textarea {
+.account-page__field textarea,
+.account-page__otp-field input {
   width: 100%;
   padding: 1rem 1.05rem;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -442,11 +448,65 @@
 }
 
 .account-page__field input:focus,
-.account-page__field textarea:focus {
+.account-page__field textarea:focus,
+.account-page__otp-field input:focus {
   transform: translateY(-1px);
   border-color: rgba(207, 168, 125, 0.5);
   background: rgba(255, 255, 255, 0.05);
   box-shadow: 0 0 0 4px rgba(207, 168, 125, 0.08);
+}
+
+.account-page__field input:disabled {
+  opacity: 0.68;
+  cursor: not-allowed;
+}
+
+.account-page__field-hint {
+  margin: -0.2rem 0 0;
+  color: rgba(244, 236, 228, 0.58);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.account-page__email-verification {
+  padding: 1rem;
+  border: 1px solid rgba(207, 168, 125, 0.16);
+  border-radius: 1.35rem;
+  background:
+    linear-gradient(180deg, rgba(207, 168, 125, 0.08), transparent),
+    rgba(255, 255, 255, 0.03);
+}
+
+.account-page__email-tools {
+  display: grid;
+  gap: 1rem;
+}
+
+.account-page__otp-field {
+  display: grid;
+  gap: 0.72rem;
+  min-width: 0;
+}
+
+.account-page__otp-field input {
+  max-width: 14rem;
+  font-size: 1.05rem;
+  letter-spacing: 0.22em;
+  text-align: center;
+}
+
+.account-page__otp-status {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.account-page__otp-status--success {
+  color: #a8e6c1;
+}
+
+.account-page__otp-status--error {
+  color: #efb8b8;
 }
 
 .account-page__avatar-field {
@@ -801,6 +861,27 @@
   .account-page__avatar-field {
     grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
+  }
+
+  .account-page__field--email .account-page__field-hint {
+    position: absolute;
+    top: 0.05rem;
+    right: 0;
+    max-width: 58%;
+    margin: 0;
+    overflow: hidden;
+    font-size: 0.66rem;
+    letter-spacing: 0.12em;
+    line-height: 1.2;
+    text-align: right;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .account-page__email-tools {
+    grid-template-columns: auto minmax(12rem, 1fr);
+    align-items: end;
   }
 }
 

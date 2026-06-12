@@ -21,4 +21,20 @@ export const syncAuthSessionSchema = z.object({
   address: z.string().trim().max(240).optional(),
 });
 
-export const updateUserProfileSchema = syncAuthSessionSchema;
+const emailOtpCodeSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{6}$/, "Enter the 6-digit verification code.");
+
+export const requestEmailOtpSchema = z.object({
+  email: z.string().trim().email().max(254),
+});
+
+export const verifyEmailOtpSchema = requestEmailOtpSchema.extend({
+  code: emailOtpCodeSchema,
+});
+
+export const updateUserProfileSchema = syncAuthSessionSchema.extend({
+  email: z.string().trim().email().max(254).optional(),
+  emailOtpCode: emailOtpCodeSchema.optional(),
+});

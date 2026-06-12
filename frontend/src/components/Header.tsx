@@ -71,7 +71,7 @@ export function Header() {
       ? [
           {
             label: isAdmin ? "Operations" : "Orders",
-            to: "/orders",
+            to: isAdmin ? "/operations" : "/orders",
             caption: isAdmin ? "Admin reserve desk" : "Reserve tracking",
           },
         ]

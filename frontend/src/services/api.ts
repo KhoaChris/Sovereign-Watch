@@ -9,6 +9,7 @@ import type {
   CheckoutCartResponse,
   FinalizeCheckoutPayload,
   FirebaseCustomTokenResponse,
+  EmailOtpResponse,
   PrepareCheckoutPaymentPayload,
   PrepareCheckoutPaymentResponse,
   CreateProductPayload,
@@ -22,12 +23,14 @@ import type {
   PublicReviewRecord,
   ReviewAdminQuery,
   ReviewRecord,
+  RequestEmailOtpPayload,
   SyncAuthSessionPayload,
   UpsertReviewPayload,
   UpdateCartItemPayload,
   UpdateOrderPayload,
   UpdateProductPayload,
   UpdateUserProfilePayload,
+  VerifyEmailOtpPayload,
 } from "../shared";
 
 const LOCAL_API_BASE_URL = "http://localhost:4000/api";
@@ -81,6 +84,21 @@ function toApiRequestError(error: unknown, path: string): Error {
       : new Error("Unable to connect to the API.");
   }
 
+  const responseData = error.response?.data as
+    | { details?: unknown; error?: unknown }
+    | undefined;
+
+  if (typeof responseData?.error === "string") {
+    const details = Array.isArray(responseData.details)
+      ? responseData.details.filter(
+          (detail): detail is string => typeof detail === "string",
+        )
+      : [];
+    const detailSuffix = details.length > 0 ? ` ${details.join(" ")}` : "";
+
+    return new Error(`${responseData.error}${detailSuffix}`);
+  }
+
   const method = error.config?.method?.toUpperCase() ?? "REQUEST";
   const status = error.response?.status;
   const url = resolveApiRequestUrl(error.config?.url ?? path, error.config?.baseURL);
@@ -90,7 +108,9 @@ function toApiRequestError(error: unknown, path: string): Error {
 }
 
 async function unwrapResponse<T>(request: Promise<{ data: ApiResponse<T> }>): Promise<T> {
-  const response = await request;
+  const response = await request.catch((error: unknown) => {
+    throw toApiRequestError(error, "");
+  });
 
   if (!response.data.success) {
     throw new Error(response.data.error);
@@ -188,6 +208,21 @@ export const storefrontApi = {
   },
   async updateOrder(orderId: string, payload: UpdateOrderPayload): Promise<OrderRecord> {
     return unwrapResponse(api.patch<ApiResponse<OrderRecord>>(`/orders/${orderId}`, payload));
+  },
+  async requestSignUpEmailOtp(payload: RequestEmailOtpPayload): Promise<EmailOtpResponse> {
+    return unwrapResponse(
+      api.post<ApiResponse<EmailOtpResponse>>("/auth/email-otp/sign-up/request", payload),
+    );
+  },
+  async verifySignUpEmailOtp(payload: VerifyEmailOtpPayload): Promise<EmailOtpResponse> {
+    return unwrapResponse(
+      api.post<ApiResponse<EmailOtpResponse>>("/auth/email-otp/sign-up/verify", payload),
+    );
+  },
+  async requestProfileEmailOtp(payload: RequestEmailOtpPayload): Promise<EmailOtpResponse> {
+    return unwrapResponse(
+      api.post<ApiResponse<EmailOtpResponse>>("/auth/email-otp/profile/request", payload),
+    );
   },
   async syncAuthSession(payload: SyncAuthSessionPayload = {}): Promise<AuthSession> {
     return unwrapResponse(api.post<ApiResponse<AuthSession>>("/auth/session", payload));

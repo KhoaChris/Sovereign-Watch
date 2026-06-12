@@ -27,6 +27,11 @@ const OrdersPage = lazy(async () => {
   return { default: module.OrdersPage };
 });
 
+const OperationsPage = lazy(async () => {
+  const module = await import("./pages/OperationsPage");
+  return { default: module.OperationsPage };
+});
+
 const FavoritesPage = lazy(async () => {
   const module = await import("./pages/FavoritesPage");
   return { default: module.FavoritesPage };
@@ -100,6 +105,7 @@ function App() {
             <Route element={<CollectionPage />} path="/collection" />
             <Route element={<ProductPage />} path="/collection/:productId" />
             <Route element={<OrdersPage />} path="/orders" />
+            <Route element={<OperationsPage />} path="/operations" />
             <Route element={<FavoritesPage />} path="/favorites" />
             <Route element={<CartPage />} path="/cart" />
             <Route element={<AccountPage />} path="/account" />

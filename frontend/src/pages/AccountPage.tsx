@@ -14,6 +14,7 @@ import {
 import { Link } from "react-router-dom";
 
 import { useFeedback } from "../feedback/feedback-context";
+import { storefrontApi } from "../services/api";
 import { useStorefront } from "../storefront/storefront-context";
 import type { AuthUserProfile } from "../shared";
 import "../styles/pages/account-page.css";
@@ -26,6 +27,11 @@ const AVATAR_ACCEPTED_MIME_TYPES = new Set([
 ]);
 const MAX_AVATAR_FILE_SIZE = 4 * 1024 * 1024;
 const AVATAR_OUTPUT_SIZE = 320;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function isValidEmailAddress(value: string): boolean {
+  return EMAIL_PATTERN.test(value);
+}
 
 function formatMemberSince(value: string): string {
   return new Date(value).toLocaleDateString("en-US", {
@@ -154,13 +160,23 @@ function AccountProfileForm({
   const { notify } = useFeedback();
   const { authBusy, saveProfile } = useStorefront();
   const [fullName, setFullName] = useState(user.fullName);
+  const [email, setEmail] = useState(user.email);
+  const [emailOtpBusy, setEmailOtpBusy] = useState(false);
+  const [emailOtpCode, setEmailOtpCode] = useState("");
+  const [emailOtpError, setEmailOtpError] = useState<string | null>(null);
+  const [emailOtpMessage, setEmailOtpMessage] = useState<string | null>(null);
+  const [emailOtpSentEmail, setEmailOtpSentEmail] = useState("");
   const [phoneNumber, setPhoneNumber] = useState(user.phoneNumber);
   const [address, setAddress] = useState(user.address);
   const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const normalizedEmail = email.trim().toLowerCase();
+  const currentEmail = user.email.trim().toLowerCase();
+  const emailChanged = normalizedEmail.length > 0 && normalizedEmail !== currentEmail;
+  const canEditEmail = !isAdmin;
 
-  const memberMark = getMemberMark(fullName, user.email);
+  const memberMark = getMemberMark(fullName, email);
   const { completedFields, percentage } = getProfileCompletion({
     address,
     fullName,
@@ -216,18 +232,101 @@ function AccountProfileForm({
     },
     {
       label: "Email",
-      value: user.email,
+      value: email.trim() || user.email,
     },
   ];
 
+  function resetEmailOtpState(): void {
+    setEmailOtpCode("");
+    setEmailOtpError(null);
+    setEmailOtpMessage(null);
+    setEmailOtpSentEmail("");
+  }
+
+  async function handleRequestProfileEmailOtp(): Promise<void> {
+    if (!canEditEmail) {
+      setEmailOtpError("Admin account email changes are disabled.");
+      return;
+    }
+
+    if (!normalizedEmail) {
+      setEmailOtpError("Enter a new email address before requesting a code.");
+      return;
+    }
+
+    if (!isValidEmailAddress(normalizedEmail)) {
+      setEmailOtpError("Enter a valid email address before requesting a code.");
+      return;
+    }
+
+    if (!emailChanged) {
+      setEmailOtpError("Enter an email different from your current account.");
+      return;
+    }
+
+    setEmailOtpBusy(true);
+    setEmailOtpError(null);
+    setEmailOtpMessage(null);
+
+    try {
+      const result = await storefrontApi.requestProfileEmailOtp({
+        email: normalizedEmail,
+      });
+      setEmailOtpSentEmail(result.email);
+      setEmailOtpCode("");
+      setEmailOtpMessage(
+        `A 6-digit code was sent to ${result.email}. It expires in ${Math.round(
+          result.expiresInSeconds / 60,
+        )} minutes.`,
+      );
+    } catch (error) {
+      setEmailOtpError(
+        error instanceof Error
+          ? error.message
+          : "Unable to send a verification code right now.",
+      );
+    } finally {
+      setEmailOtpBusy(false);
+    }
+  }
+
   async function handleSubmit(): Promise<void> {
+    if (emailChanged) {
+      if (!canEditEmail) {
+        setEmailOtpError("Admin account email changes are disabled.");
+        return;
+      }
+
+      if (!isValidEmailAddress(normalizedEmail)) {
+        setEmailOtpError("Enter a valid email address before saving.");
+        return;
+      }
+
+      if (emailOtpSentEmail !== normalizedEmail) {
+        setEmailOtpError("Send a verification code to this email before saving.");
+        return;
+      }
+
+      if (!/^\d{6}$/.test(emailOtpCode.trim())) {
+        setEmailOtpError("Enter the 6-digit code sent to your new email.");
+        return;
+      }
+    }
+
     try {
       await saveProfile({
         avatarUrl,
         address,
+        ...(emailChanged
+          ? {
+              email: normalizedEmail,
+              emailOtpCode: emailOtpCode.trim(),
+            }
+          : {}),
         fullName,
         phoneNumber,
       });
+      resetEmailOtpState();
     } catch {
       return;
     }
@@ -446,6 +545,33 @@ function AccountProfileForm({
                 />
               </label>
 
+              <div className="account-page__field account-page__field--email">
+                <span>Email</span>
+                <input
+                  autoComplete="email"
+                  disabled={!canEditEmail}
+                  onChange={(event) => {
+                    setEmail(event.target.value);
+                    resetEmailOtpState();
+                  }}
+                  required
+                  type="email"
+                  value={email}
+                />
+                <p
+                  className="account-page__field-hint"
+                  title={
+                    canEditEmail
+                      ? "Changing your login email requires a one-time code."
+                      : "Admin email is locked to preserve operations access."
+                  }
+                >
+                  {canEditEmail
+                    ? "OTP required for changes"
+                    : "Locked for operations"}
+                </p>
+              </div>
+
               <label className="account-page__field">
                 <span>Phone number</span>
                 <input
@@ -453,6 +579,57 @@ function AccountProfileForm({
                   value={phoneNumber}
                 />
               </label>
+
+              {emailChanged && canEditEmail ? (
+                <div className="account-page__field account-page__field--wide account-page__email-verification">
+                  <div className="account-page__email-tools">
+                    <button
+                      className="account-page__button"
+                      disabled={authBusy || emailOtpBusy}
+                      onClick={() => {
+                        void handleRequestProfileEmailOtp();
+                      }}
+                      type="button"
+                    >
+                      {emailOtpBusy ? (
+                        <LoaderCircle className="account-page__button-icon account-page__button-icon--spinning" />
+                      ) : null}
+                      {emailOtpSentEmail === normalizedEmail
+                        ? "Resend code"
+                        : "Send OTP"}
+                    </button>
+
+                    <label className="account-page__otp-field">
+                      <span>Email OTP</span>
+                      <input
+                        autoComplete="one-time-code"
+                        inputMode="numeric"
+                        maxLength={6}
+                        onChange={(event) =>
+                          setEmailOtpCode(
+                            event.target.value.replace(/\D/g, ""),
+                          )
+                        }
+                        pattern="[0-9]{6}"
+                        placeholder="000000"
+                        required
+                        value={emailOtpCode}
+                      />
+                    </label>
+                  </div>
+
+                  {emailOtpMessage ? (
+                    <p className="account-page__otp-status account-page__otp-status--success">
+                      {emailOtpMessage}
+                    </p>
+                  ) : null}
+                  {emailOtpError ? (
+                    <p className="account-page__otp-status account-page__otp-status--error">
+                      {emailOtpError}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
 
               <label className="account-page__field account-page__field--wide">
                 <span>Primary address</span>
@@ -544,7 +721,10 @@ function AccountProfileForm({
                 <ArrowRight className="account-page__quick-arrow" />
               </Link>
 
-              <Link className="account-page__quick-link" to="/orders">
+              <Link
+                className="account-page__quick-link"
+                to={isAdmin ? "/operations" : "/orders"}
+              >
                 <Package className="account-page__quick-icon" />
                 <div>
                   <strong>{isAdmin ? "Operations" : "Orders"}</strong>

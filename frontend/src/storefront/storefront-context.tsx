@@ -11,6 +11,7 @@ import {
 import {
   createUserWithEmailAndPassword,
   refreshFirebaseToken,
+  signInWithCustomToken,
   signInWithEmailAndPassword,
   type FirebaseAuthTokens,
 } from "../services/firebase-auth";
@@ -68,6 +69,7 @@ interface AuthCredentials {
 }
 
 interface RegisterCredentials extends AuthCredentials {
+  emailOtpCode: string;
   fullName: string;
 }
 
@@ -638,7 +640,7 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
       );
       const normalizedTokens = {
         ...refreshedTokens,
-        email: state.tokens.email || refreshedTokens.email,
+        email: state.user?.email || state.tokens.email || refreshedTokens.email,
       };
 
       persistTokens(normalizedTokens);
@@ -730,10 +732,19 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
     }
   };
 
-  const signUp = async ({ fullName, email, password }: RegisterCredentials) => {
+  const signUp = async ({
+    email,
+    emailOtpCode,
+    fullName,
+    password,
+  }: RegisterCredentials) => {
     dispatch({ type: "auth/request" });
 
     try {
+      await storefrontApi.verifySignUpEmailOtp({
+        code: emailOtpCode.trim(),
+        email: email.trim(),
+      });
       const tokens = await createUserWithEmailAndPassword(
         fullName.trim(),
         email.trim(),
@@ -813,6 +824,32 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
 
     try {
       const session = await storefrontApi.updateProfile(payload);
+      const emailChanged =
+        Boolean(payload.email) && session.user.email !== state.tokens?.email;
+
+      if (emailChanged && state.tokens) {
+        try {
+          const { customToken } = await storefrontApi.getFirebaseCustomToken();
+          const refreshedTokens = await signInWithCustomToken(customToken);
+          const normalizedTokens = {
+            ...refreshedTokens,
+            email: session.user.email,
+          };
+
+          persistTokens(normalizedTokens);
+          setApiAuthToken(normalizedTokens.idToken);
+          dispatch({ type: "tokens/update", tokens: normalizedTokens });
+        } catch {
+          const normalizedTokens = {
+            ...state.tokens,
+            email: session.user.email,
+          };
+
+          persistTokens(normalizedTokens);
+          dispatch({ type: "tokens/update", tokens: normalizedTokens });
+        }
+      }
+
       persistUser(session.user);
       dispatch({ type: "profile/update_success", user: session.user });
       notify({
