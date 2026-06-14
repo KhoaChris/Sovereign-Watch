@@ -17,6 +17,10 @@ import {
 } from "../services/firebase-auth";
 import { useFeedback } from "../feedback/feedback-context";
 import { setApiAuthToken, storefrontApi } from "../services/api";
+import {
+  SUPPORT_CHAT_CART_UPDATED_EVENT,
+  SUPPORT_CHAT_FAVORITES_UPDATED_EVENT,
+} from "../services/support-chat";
 import type {
   AuthUserProfile,
   CartRecord,
@@ -627,6 +631,50 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
     );
     persistScopedStorefrontCache(CART_STORAGE_KEY, state.user.id, state.cart);
   }, [state.cart, state.favorites, state.user]);
+
+  useEffect(() => {
+    if (!state.user || typeof window === "undefined") {
+      return;
+    }
+
+    const handleCartUpdated = (event: Event) => {
+      const cart = (event as CustomEvent<CartRecord>).detail;
+      const userIds = new Set<string>(
+        [state.user?.id, state.user?.firebaseUid].filter(
+          (userId): userId is string => Boolean(userId),
+        ),
+      );
+
+      if (!cart || !cart.userId || !userIds.has(cart.userId)) {
+        return;
+      }
+
+      dispatch({ type: "cart/update", cart });
+    };
+
+    const handleFavoritesUpdated = (event: Event) => {
+      const favorites = (event as CustomEvent<FavoriteRecord>).detail;
+      const userIds = new Set<string>(
+        [state.user?.id, state.user?.firebaseUid].filter(
+          (userId): userId is string => Boolean(userId),
+        ),
+      );
+
+      if (!favorites || !favorites.userId || !userIds.has(favorites.userId)) {
+        return;
+      }
+
+      dispatch({ type: "favorites/update", favorites });
+    };
+
+    window.addEventListener(SUPPORT_CHAT_CART_UPDATED_EVENT, handleCartUpdated);
+    window.addEventListener(SUPPORT_CHAT_FAVORITES_UPDATED_EVENT, handleFavoritesUpdated);
+
+    return () => {
+      window.removeEventListener(SUPPORT_CHAT_CART_UPDATED_EVENT, handleCartUpdated);
+      window.removeEventListener(SUPPORT_CHAT_FAVORITES_UPDATED_EVENT, handleFavoritesUpdated);
+    };
+  }, [state.user]);
 
   const ensureAuthenticated = async (): Promise<FirebaseAuthTokens> => {
     if (!state.tokens) {

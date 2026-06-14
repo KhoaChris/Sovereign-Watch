@@ -1816,7 +1816,158 @@
   }
 }
 
+@media (min-width: 720px) and (max-width: 979px) {
+  .collection-page {
+    padding-inline: 1.15rem;
+    overflow-x: hidden;
+  }
+
+  .collection-page__shell {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .collection-page__utility {
+    overflow: hidden;
+  }
+
+  .collection-page__utility-primary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(13rem, 0.46fr);
+  }
+
+  .collection-page__utility-module--search {
+    grid-column: 1 / -1;
+  }
+
+  .collection-page__utility-module,
+  .collection-page__utility-module--search,
+  .collection-page__utility-module--count,
+  .collection-page__utility-module--sort,
+  .collection-page__utility-module--filters {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .collection-page__utility-secondary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .collection-page__category-rail {
+    flex-wrap: wrap;
+    overflow: visible;
+    max-width: 100%;
+    padding-bottom: 0;
+  }
+}
+
 @media (max-width: 719px) {
+  .collection-page {
+    padding-inline: 0.75rem;
+    overflow-x: hidden;
+  }
+
+  .collection-page__shell {
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .collection-page__utility {
+    gap: 0.72rem;
+    padding: 0.8rem;
+    border-radius: 1.35rem;
+    overflow: hidden;
+  }
+
+  .collection-page__utility-primary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.68rem;
+  }
+
+  .collection-page__utility-module,
+  .collection-page__utility-module--search,
+  .collection-page__utility-module--count,
+  .collection-page__utility-module--sort,
+  .collection-page__utility-module--filters {
+    width: 100%;
+    min-width: 0;
+    min-height: auto;
+    flex: none;
+    padding: 0.78rem 0.82rem;
+    border-radius: 1.05rem;
+  }
+
+  .collection-page__searchbar,
+  .collection-page__sort-select,
+  .collection-page__search-input {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .collection-page__searchbar {
+    gap: 0.68rem;
+    min-height: 2.65rem;
+  }
+
+  .collection-page__search-input {
+    font-size: 0.92rem;
+  }
+
+  .collection-page__utility-value {
+    font-size: 1.7rem;
+  }
+
+  .collection-page__filters-trigger {
+    justify-content: space-between;
+    width: 100%;
+    font-size: 1rem;
+  }
+
+  .collection-page__utility-secondary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    overflow: hidden;
+  }
+
+  .collection-page__category-rail {
+    flex-wrap: wrap;
+    max-width: 100%;
+    overflow: visible;
+    gap: 0.48rem;
+    padding-bottom: 0;
+  }
+
+  .collection-page__category-pill,
+  .collection-page__active-chip {
+    min-height: 2.05rem;
+    padding: 0.5rem 0.72rem;
+    font-size: 0.58rem;
+    letter-spacing: 0.18em;
+  }
+
+  .collection-page__active-strip {
+    justify-content: start;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .collection-page__active-hint {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    font-size: 0.84rem;
+    line-height: 1.6;
+  }
+
+  .collection-page__results-footer {
+    width: 100%;
+    border-radius: 1.25rem;
+  }
+
   .collection-page__cards {
     gap: 0.9rem;
   }

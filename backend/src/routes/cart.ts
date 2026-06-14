@@ -3,6 +3,7 @@ import { Router } from "express";
 import { assertAuthUser, AuthenticatedRequest, requireAuth } from "../middleware/auth";
 import {
   addCartItem,
+  clearCartRecord,
   finalizeCheckout,
   checkoutCartRecord,
   getCartRecord,
@@ -58,6 +59,16 @@ cartRouter.patch("/items/:itemId", async (request, response, next) => {
 cartRouter.delete("/items/:itemId", async (request, response, next) => {
   try {
     const cart = await removeCartItem(assertAuthUser(request as AuthenticatedRequest).uid, request.params.itemId);
+    response.json({ success: true, data: cart });
+  } catch (error) {
+    next(error);
+  }
+});
+
+cartRouter.delete("/", async (request, response, next) => {
+  try {
+    const cart = await clearCartRecord(assertAuthUser(request as AuthenticatedRequest).uid);
+
     response.json({ success: true, data: cart });
   } catch (error) {
     next(error);

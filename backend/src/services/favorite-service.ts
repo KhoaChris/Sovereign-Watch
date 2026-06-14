@@ -102,3 +102,14 @@ export async function removeFavoriteProduct(userId: string, productId: string): 
 
   return getFavoriteRecord(userId);
 }
+
+export async function clearFavoriteRecord(userId: string): Promise<FavoriteRecord> {
+  const stored = await getStoredFavorites(userId);
+
+  await persistFavorites({
+    ...stored,
+    items: [],
+  });
+
+  return getFavoriteRecord(userId);
+}

@@ -133,6 +133,22 @@ export function BusinessPage({ pageKey }: { pageKey: BusinessPageKey }) {
               ))}
             </div>
           </div>
+
+          <nav
+            aria-label={`${page.eyebrow} quick sections`}
+            className="company-page__summary-strip"
+          >
+            {page.sections.map((section, index) => (
+              <a
+                key={section.id}
+                className="company-page__summary-link"
+                href={`#${section.id}`}
+              >
+                <span>{`0${index + 1}`}</span>
+                <strong>{section.label}</strong>
+              </a>
+            ))}
+          </nav>
         </motion.header>
 
         <div className="company-page__workspace">

@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   Elements,
@@ -10,14 +17,24 @@ import { loadStripe } from "@stripe/stripe-js";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   ArrowLeft,
+  ArrowRight,
   ChevronDown,
   ChevronLeft,
+  CircleCheck,
+  ClipboardCheck,
   CreditCard,
   LoaderCircle,
+  Mail,
+  MapPin,
   Minus,
+  NotebookPen,
+  PackageCheck,
+  Phone,
   Plus,
   ShieldCheck,
+  ShoppingBag,
   Trash2,
+  UserRound,
   Wallet,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
@@ -95,10 +112,10 @@ const PAYMENT_METHODS: Array<{
 ];
 
 const CHECKOUT_STEPS = [
-  { key: "details", label: "Details" },
-  { key: "payment", label: "Payment" },
-  { key: "review", label: "Review" },
-  { key: "done", label: "Done" },
+  { key: "details", label: "Details", icon: ClipboardCheck },
+  { key: "payment", label: "Payment", icon: CreditCard },
+  { key: "review", label: "Review", icon: PackageCheck },
+  { key: "done", label: "Done", icon: CircleCheck },
 ] as const;
 
 type CheckoutStep = (typeof CHECKOUT_STEPS)[number]["key"];
@@ -238,26 +255,47 @@ function CheckoutProgress({ currentStep }: { currentStep: CheckoutStep }) {
   const activeIndex = CHECKOUT_STEPS.findIndex(
     (step) => step.key === currentStep,
   );
+  const safeActiveIndex = Math.max(activeIndex, 0);
+  const progressStyle = {
+    "--checkout-progress":
+      safeActiveIndex / Math.max(CHECKOUT_STEPS.length - 1, 1),
+  } as CSSProperties;
 
   return (
-    <div className="cart-page__progress" aria-label="Checkout progress">
+    <div
+      className="cart-page__progress"
+      style={progressStyle}
+      aria-label="Checkout progress"
+    >
       {CHECKOUT_STEPS.map((step, index) => {
         const state =
-          index < activeIndex
+          index < safeActiveIndex
             ? "complete"
-            : index === activeIndex
+            : index === safeActiveIndex
               ? "active"
               : "idle";
+        const stateLabel =
+          state === "complete"
+            ? "Complete"
+            : state === "active"
+              ? "Current"
+              : "Pending";
+        const Icon = step.icon;
 
         return (
           <div
             key={step.key}
             className={`cart-page__progress-step cart-page__progress-step--${state}`}
+            aria-current={state === "active" ? "step" : undefined}
+            aria-label={`${step.label}: ${stateLabel}`}
           >
-            <div className="cart-page__progress-badge">{index + 1}</div>
-            <div className="cart-page__progress-copy">
-              <span>{step.label}</span>
-            </div>
+            <span className="cart-page__progress-node" aria-hidden="true">
+              <Icon className="cart-page__progress-icon" />
+            </span>
+            <span className="cart-page__progress-copy">
+              <span className="cart-page__progress-label">{step.label}</span>
+              <span className="cart-page__progress-state">{stateLabel}</span>
+            </span>
           </div>
         );
       })}
@@ -816,12 +854,33 @@ export function CartPage() {
               <strong>{formatCurrency(subtotal)}</strong>
             </div>
           </div>
+
+          <div className="cart-page__flow" aria-label="Reserve cart workflow">
+            <div className="cart-page__flow-item">
+              <span>01</span>
+              <strong>Review pieces</strong>
+              <p>Confirm the watches, variants, and reserve quantity.</p>
+            </div>
+            <div className="cart-page__flow-item">
+              <span>02</span>
+              <strong>Confirm details</strong>
+              <p>Keep delivery and account information ready for checkout.</p>
+            </div>
+            <div className="cart-page__flow-item">
+              <span>03</span>
+              <strong>Place reserve</strong>
+              <p>Create the order and follow status from your orders desk.</p>
+            </div>
+          </div>
         </motion.section>
 
         {commerceLoading && !cart ? (
           <CartSkeleton />
         ) : items.length === 0 ? (
           <motion.section className="cart-page__state" {...revealProps}>
+            <span className="cart-page__state-mark" aria-hidden="true">
+              <ShoppingBag className="cart-page__state-icon" />
+            </span>
             <div className="cart-page__state-head">
               <p className="cart-page__state-copy">
                 Your reserve cart is empty
@@ -831,12 +890,21 @@ export function CartPage() {
               Nothing is staged right now. Open the marketplace or pull a saved
               reference from favorites to start a calmer checkout flow.
             </p>
+            <div
+              className="cart-page__state-steps"
+              aria-label="Reserve cart steps"
+            >
+              <span>Browse marketplace</span>
+              <span>Add a variant</span>
+              <span>Confirm checkout</span>
+            </div>
             <div className="cart-page__actions">
               <Link
                 className="cart-page__button cart-page__button--primary"
                 to="/collection"
               >
                 Browse marketplace
+                <ArrowRight className="cart-page__button-icon" />
               </Link>
               <Link className="cart-page__button" to="/favorites">
                 Open favorites
@@ -850,8 +918,15 @@ export function CartPage() {
                 <section className="cart-page__panel cart-page__panel--items">
                   <div className="cart-page__panel-head">
                     <div>
-                      <p className="cart-page__section-label">Cart items</p>
+                      <p className="cart-page__section-label">Reserve queue</p>
+                      <h2 className="cart-page__section-title">
+                        Pieces staged for checkout.
+                      </h2>
                     </div>
+                    <p className="cart-page__panel-note">
+                      Adjust quantity or remove a line before opening the
+                      guided checkout desk.
+                    </p>
                   </div>
 
                   <div
@@ -884,6 +959,9 @@ export function CartPage() {
                           }
                         >
                           <div className="cart-page__row-reference">
+                            <span className="cart-page__row-index">
+                              {String(index + 1).padStart(2, "0")}
+                            </span>
                             <Link
                               className="cart-page__thumb"
                               to={`/collection/${item.productId}`}
@@ -1023,8 +1101,18 @@ export function CartPage() {
                 </div>
 
                 <p className="cart-page__summary-copy">
-                  Proceed to checkout when you satisfied.
+                  Proceed to checkout when the reserve looks right.
                 </p>
+
+                <div className="cart-page__summary-assurance">
+                  <span className="cart-page__summary-assurance-icon">
+                    <PackageCheck className="cart-page__button-icon" />
+                  </span>
+                  <p>
+                    Each reserve is created as a tracked order, then synced to
+                    the member orders desk.
+                  </p>
+                </div>
 
                 <div className="cart-page__summary-actions">
                   <button
@@ -1034,6 +1122,7 @@ export function CartPage() {
                     type="button"
                   >
                     Proceed to checkout
+                    <ArrowRight className="cart-page__button-icon" />
                   </button>
 
                   <Link className="cart-page__button" to="/collection">
@@ -1086,32 +1175,32 @@ export function CartPage() {
                       initial={{ opacity: 0, y: 14 }}
                       transition={{ duration: 0.28 }}
                     >
-                      <div className="cart-page__panel-head">
-                        <div>
-                          <p className="cart-page__section-label">01 Details</p>
-                          <h2 className="cart-page__section-title">
-                            Confirm the delivery contact.
-                          </h2>
-                        </div>
-                        <p className="cart-page__panel-note">
-                          Pulled from your account first, then editable for this
-                          reserve.
-                        </p>
-                      </div>
-
                       <div className="cart-page__checkout-grid">
-                        <label className="cart-page__field">
-                          <span>Full name</span>
-                          <input
-                            className="cart-page__input"
-                            onChange={(event) =>
-                              updateCheckoutField(
-                                "fullName",
-                                event.target.value,
-                              )
-                            }
-                            value={checkoutDetails.fullName}
-                          />
+                        <label
+                          className={`cart-page__field${detailErrors.fullName ? " cart-page__field--invalid" : ""}`}
+                        >
+                          <span className="cart-page__field-label">
+                            Full name
+                          </span>
+                          <span className="cart-page__input-shell">
+                            <UserRound
+                              className="cart-page__field-icon"
+                              aria-hidden="true"
+                            />
+                            <input
+                              aria-invalid={Boolean(detailErrors.fullName)}
+                              autoComplete="name"
+                              className="cart-page__input"
+                              onChange={(event) =>
+                                updateCheckoutField(
+                                  "fullName",
+                                  event.target.value,
+                                )
+                              }
+                              placeholder="Recipient name"
+                              value={checkoutDetails.fullName}
+                            />
+                          </span>
                           {detailErrors.fullName ? (
                             <p className="cart-page__inline-error">
                               {detailErrors.fullName}
@@ -1119,15 +1208,27 @@ export function CartPage() {
                           ) : null}
                         </label>
 
-                        <label className="cart-page__field">
-                          <span>Email</span>
-                          <input
-                            className="cart-page__input"
-                            onChange={(event) =>
-                              updateCheckoutField("email", event.target.value)
-                            }
-                            value={checkoutDetails.email}
-                          />
+                        <label
+                          className={`cart-page__field${detailErrors.email ? " cart-page__field--invalid" : ""}`}
+                        >
+                          <span className="cart-page__field-label">Email</span>
+                          <span className="cart-page__input-shell">
+                            <Mail
+                              className="cart-page__field-icon"
+                              aria-hidden="true"
+                            />
+                            <input
+                              aria-invalid={Boolean(detailErrors.email)}
+                              autoComplete="email"
+                              className="cart-page__input"
+                              onChange={(event) =>
+                                updateCheckoutField("email", event.target.value)
+                              }
+                              placeholder="name@example.com"
+                              type="email"
+                              value={checkoutDetails.email}
+                            />
+                          </span>
                           {detailErrors.email ? (
                             <p className="cart-page__inline-error">
                               {detailErrors.email}
@@ -1135,18 +1236,32 @@ export function CartPage() {
                           ) : null}
                         </label>
 
-                        <label className="cart-page__field">
-                          <span>Phone number</span>
-                          <input
-                            className="cart-page__input"
-                            onChange={(event) =>
-                              updateCheckoutField(
-                                "phoneNumber",
-                                event.target.value,
-                              )
-                            }
-                            value={checkoutDetails.phoneNumber}
-                          />
+                        <label
+                          className={`cart-page__field${detailErrors.phoneNumber ? " cart-page__field--invalid" : ""}`}
+                        >
+                          <span className="cart-page__field-label">
+                            Phone number
+                          </span>
+                          <span className="cart-page__input-shell">
+                            <Phone
+                              className="cart-page__field-icon"
+                              aria-hidden="true"
+                            />
+                            <input
+                              aria-invalid={Boolean(detailErrors.phoneNumber)}
+                              autoComplete="tel"
+                              className="cart-page__input"
+                              onChange={(event) =>
+                                updateCheckoutField(
+                                  "phoneNumber",
+                                  event.target.value,
+                                )
+                              }
+                              placeholder="+84 ..."
+                              type="tel"
+                              value={checkoutDetails.phoneNumber}
+                            />
+                          </span>
                           {detailErrors.phoneNumber ? (
                             <p className="cart-page__inline-error">
                               {detailErrors.phoneNumber}
@@ -1155,7 +1270,9 @@ export function CartPage() {
                         </label>
 
                         <div className="cart-page__field cart-page__field--compact">
-                          <span>Profile sync</span>
+                          <span className="cart-page__field-label">
+                            Profile sync
+                          </span>
                           <label className="cart-page__toggle">
                             <input
                               checked={Boolean(checkoutDetails.saveToAccount)}
@@ -1169,25 +1286,46 @@ export function CartPage() {
                             />
                             <span className="cart-page__toggle-track" />
                             <span className="cart-page__toggle-copy">
-                              Save these details back to Account after checkout
+                              <ShieldCheck
+                                className="cart-page__toggle-icon"
+                                aria-hidden="true"
+                              />
+                              <span>
+                                Save these details back to Account after
+                                checkout
+                              </span>
                             </span>
                           </label>
                         </div>
 
-                        <label className="cart-page__field cart-page__field--wide">
-                          <span>Shipping address</span>
-                          <textarea
-                            className="cart-page__textarea"
-                            onChange={(event) =>
-                              updateCheckoutField(
-                                "shippingAddress",
-                                event.target.value,
-                              )
-                            }
-                            placeholder="Street, district, city, postal code, and any delivery details."
-                            rows={4}
-                            value={checkoutDetails.shippingAddress}
-                          />
+                        <label
+                          className={`cart-page__field cart-page__field--wide${detailErrors.shippingAddress ? " cart-page__field--invalid" : ""}`}
+                        >
+                          <span className="cart-page__field-label">
+                            Shipping address
+                          </span>
+                          <span className="cart-page__input-shell cart-page__input-shell--area">
+                            <MapPin
+                              className="cart-page__field-icon"
+                              aria-hidden="true"
+                            />
+                            <textarea
+                              aria-invalid={Boolean(
+                                detailErrors.shippingAddress,
+                              )}
+                              autoComplete="street-address"
+                              className="cart-page__textarea"
+                              onChange={(event) =>
+                                updateCheckoutField(
+                                  "shippingAddress",
+                                  event.target.value,
+                                )
+                              }
+                              placeholder="Street, district, city, postal code, and any delivery details."
+                              rows={4}
+                              value={checkoutDetails.shippingAddress}
+                            />
+                          </span>
                           {detailErrors.shippingAddress ? (
                             <p className="cart-page__inline-error">
                               {detailErrors.shippingAddress}
@@ -1195,20 +1333,33 @@ export function CartPage() {
                           ) : null}
                         </label>
 
-                        <label className="cart-page__field cart-page__field--wide">
-                          <span>Delivery notes</span>
-                          <textarea
-                            className="cart-page__textarea"
-                            onChange={(event) =>
-                              updateCheckoutField(
-                                "deliveryNotes",
-                                event.target.value,
-                              )
-                            }
-                            placeholder="Gate code, landmark, preferred arrival window, or collector notes."
-                            rows={3}
-                            value={checkoutDetails.deliveryNotes ?? ""}
-                          />
+                        <label
+                          className={`cart-page__field cart-page__field--wide${detailErrors.deliveryNotes ? " cart-page__field--invalid" : ""}`}
+                        >
+                          <span className="cart-page__field-label">
+                            Delivery notes
+                          </span>
+                          <span className="cart-page__input-shell cart-page__input-shell--area">
+                            <NotebookPen
+                              className="cart-page__field-icon"
+                              aria-hidden="true"
+                            />
+                            <textarea
+                              aria-invalid={Boolean(
+                                detailErrors.deliveryNotes,
+                              )}
+                              className="cart-page__textarea"
+                              onChange={(event) =>
+                                updateCheckoutField(
+                                  "deliveryNotes",
+                                  event.target.value,
+                                )
+                              }
+                              placeholder="Gate code, landmark, preferred arrival window, or collector notes."
+                              rows={3}
+                              value={checkoutDetails.deliveryNotes ?? ""}
+                            />
+                          </span>
                           {detailErrors.deliveryNotes ? (
                             <p className="cart-page__inline-error">
                               {detailErrors.deliveryNotes}
@@ -1260,19 +1411,6 @@ export function CartPage() {
                       initial={{ opacity: 0, y: 14 }}
                       transition={{ duration: 0.28 }}
                     >
-                      <div className="cart-page__panel-head">
-                        <div>
-                          <p className="cart-page__section-label">02 Payment</p>
-                          <h2 className="cart-page__section-title">
-                            Choose how this reserve will be settled.
-                          </h2>
-                        </div>
-                        <p className="cart-page__panel-note">
-                          Card and wallet methods open a secure Stripe tray
-                          inside the page.
-                        </p>
-                      </div>
-
                       <div
                         className="cart-page__payment-grid"
                         role="radiogroup"
@@ -1404,19 +1542,6 @@ export function CartPage() {
                       initial={{ opacity: 0, y: 14 }}
                       transition={{ duration: 0.28 }}
                     >
-                      <div className="cart-page__panel-head">
-                        <div>
-                          <p className="cart-page__section-label">03 Review</p>
-                          <h2 className="cart-page__section-title">
-                            Confirm the reserve before it goes live.
-                          </h2>
-                        </div>
-                        <p className="cart-page__panel-note">
-                          This is the final read for delivery details, payment
-                          method, and the pieces you are staging.
-                        </p>
-                      </div>
-
                       <div className="cart-page__review-grid">
                         <div className="cart-page__review-block">
                           <span>Recipient</span>
@@ -1488,10 +1613,6 @@ export function CartPage() {
                       initial={{ opacity: 0, y: 14 }}
                       transition={{ duration: 0.28 }}
                     >
-                      <p className="cart-page__section-label">04 Done</p>
-                      <h2 className="cart-page__section-title">
-                        Reserve confirmed.
-                      </h2>
                       <p className="cart-page__summary-copy">
                         {doneOrder
                           ? `${doneOrder.orderNumber} has been placed. We are sending you to your orders desk now.`

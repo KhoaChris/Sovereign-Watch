@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { ArrowLeft, Heart, LoaderCircle } from "lucide-react";
+import { ArrowLeft, ArrowRight, Heart, LoaderCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { useFeedback } from "../feedback/feedback-context";
@@ -21,6 +21,13 @@ function getStartingPrice(product: ProductRecord): number {
     const candidate = variant.discountPrice ?? variant.price;
     return Math.min(lowest, candidate);
   }, Number.POSITIVE_INFINITY);
+}
+
+function getAvailableStock(product: ProductRecord): number {
+  return product.variants.reduce(
+    (total, variant) => total + Math.max(variant.stockQuantity, 0),
+    0,
+  );
 }
 
 function formatCurrency(value: number): string {
@@ -162,18 +169,65 @@ export function FavoritesPage() {
               <strong>{formatDeskValue(favoriteDeskValue)}</strong>
             </div>
           </div>
+
+          <div className="favorites-page__flow" aria-label="Favorites workflow">
+            <div className="favorites-page__flow-item">
+              <span>01</span>
+              <strong>Discover</strong>
+              <p>Heart references while browsing the marketplace.</p>
+            </div>
+            <div className="favorites-page__flow-item">
+              <span>02</span>
+              <strong>Review</strong>
+              <p>
+                {favoriteCount > 0
+                  ? `${favoriteCount} saved reference${favoriteCount === 1 ? "" : "s"} ready.`
+                  : "Build a calm shortlist before checkout."}
+              </p>
+            </div>
+            <div className="favorites-page__flow-item">
+              <span>03</span>
+              <strong>Reserve</strong>
+              <p>Open a piece, then stage the right variant in cart.</p>
+            </div>
+          </div>
         </motion.section>
 
         {!isAuthenticated ? (
-          <div className="favorites-page__empty-state favorites-page__empty-state--gate">
-            Sign in to sync a private shortlist across every device you use.
-          </div>
+          <motion.section
+            className="favorites-page__state favorites-page__state--gate"
+            {...revealProps}
+          >
+            <span className="favorites-page__state-mark" aria-hidden="true">
+              <Heart className="favorites-page__state-icon" />
+            </span>
+            <div className="favorites-page__state-head">
+              <p className="favorites-page__state-copy">
+                Save references after signing in
+              </p>
+            </div>
+            <p className="favorites-page__state-support">
+              Your private shortlist can sync across devices once your account
+              is active.
+            </p>
+            <div className="favorites-page__actions favorites-page__state-actions">
+              <Link
+                className="favorites-page__button favorites-page__button--primary"
+                to="/collection"
+              >
+                Browse marketplace
+              </Link>
+            </div>
+          </motion.section>
         ) : commerceLoading && !favorites ? (
           <div className="favorites-page__empty-state">
             Restoring your saved desk.
           </div>
         ) : favoriteItems.length === 0 ? (
           <motion.section className="favorites-page__state" {...revealProps}>
+            <span className="favorites-page__state-mark" aria-hidden="true">
+              <Heart className="favorites-page__state-icon" />
+            </span>
             <div className="favorites-page__state-head">
               <p className="favorites-page__state-copy">
                 Your favorites desk is empty
@@ -183,6 +237,11 @@ export function FavoritesPage() {
               Nothing is saved right now. Open the marketplace and heart a piece
               to keep it within easy reach.
             </p>
+            <div className="favorites-page__state-steps">
+              <span>Browse the collection</span>
+              <span>Heart a reference</span>
+              <span>Return here to compare</span>
+            </div>
             <div className="favorites-page__actions favorites-page__state-actions">
               <Link
                 className="favorites-page__button favorites-page__button--primary"
@@ -196,80 +255,115 @@ export function FavoritesPage() {
             </div>
           </motion.section>
         ) : (
-          <motion.section className="favorites-page__grid" {...revealProps}>
-            {favoriteItems.map((item) => {
-              const product = item.product;
+          <motion.section
+            className="favorites-page__collection"
+            {...revealProps}
+          >
+            <div className="favorites-page__collection-head">
+              <div>
+                <p className="favorites-page__eyebrow">Shortlist</p>
+                <h2 className="favorites-page__section-title">
+                  Saved references ready for review.
+                </h2>
+              </div>
+              <Link
+                className="favorites-page__button favorites-page__button--compact"
+                to="/collection"
+              >
+                Continue browsing
+                <ArrowRight className="favorites-page__button-icon" />
+              </Link>
+            </div>
 
-              if (!product) {
-                return null;
-              }
+            <div className="favorites-page__grid">
+              {favoriteItems.map((item) => {
+                const product = item.product;
 
-              const startingPrice = getStartingPrice(product);
-              const isPending = pendingProductId === product.id;
+                if (!product) {
+                  return null;
+                }
 
-              return (
-                <article key={item.id} className="favorites-page__card">
-                  <Link
-                    className="favorites-page__media"
-                    to={`/collection/${product.id}`}
-                  >
-                    <img
-                      alt={product.name}
-                      className="favorites-page__image"
-                      src={product.images[0]}
-                    />
-                  </Link>
+                const startingPrice = getStartingPrice(product);
+                const isPending = pendingProductId === product.id;
+                const availableStock = getAvailableStock(product);
 
-                  <div className="favorites-page__card-copy">
-                    <p className="favorites-page__type">{product.type}</p>
+                return (
+                  <article key={item.id} className="favorites-page__card">
                     <Link
-                      className="favorites-page__name"
+                      className="favorites-page__media"
                       to={`/collection/${product.id}`}
                     >
-                      {product.name}
+                      <img
+                        alt={product.name}
+                        className="favorites-page__image"
+                        src={product.images[0]}
+                      />
                     </Link>
-                    <p className="favorites-page__description">
-                      {product.description}
-                    </p>
-                  </div>
 
-                  <div className="favorites-page__card-footer">
-                    <div>
-                      <p className="favorites-page__price-label">
-                        Starting from
-                      </p>
-                      <strong className="favorites-page__price">
-                        {formatCurrency(startingPrice)}
-                      </strong>
-                    </div>
-
-                    <div className="favorites-page__actions">
+                    <div className="favorites-page__card-copy">
+                      <p className="favorites-page__type">{product.type}</p>
                       <Link
-                        className="favorites-page__button favorites-page__button--primary"
+                        className="favorites-page__name"
                         to={`/collection/${product.id}`}
                       >
-                        View piece
+                        {product.name}
                       </Link>
-                      <button
-                        className="favorites-page__button"
-                        disabled={isPending}
-                        onClick={() => {
-                          void handleRemove(product);
-                        }}
-                        type="button"
-                      >
-                        {isPending ? (
-                          <LoaderCircle className="favorites-page__button-icon favorites-page__button-icon--spinning" />
-                        ) : (
-                          <Heart className="favorites-page__button-icon" />
-                        )}
-                        {isPending ? "Updating" : "Remove"}
-                      </button>
+                      <p className="favorites-page__meta">
+                        <span>{product.brand?.name ?? product.brandId}</span>
+                        <span>{product.category?.name ?? product.type}</span>
+                        <span>
+                          {product.variants.length} variant
+                          {product.variants.length === 1 ? "" : "s"}
+                        </span>
+                      </p>
+                      <p className="favorites-page__description">
+                        {product.description}
+                      </p>
                     </div>
-                  </div>
-                </article>
-              );
-            })}
+
+                    <div className="favorites-page__card-footer">
+                      <div>
+                        <p className="favorites-page__price-label">
+                          Starting from
+                        </p>
+                        <strong className="favorites-page__price">
+                          {formatCurrency(startingPrice)}
+                        </strong>
+                      </div>
+
+                      <div className="favorites-page__availability">
+                        <span>{availableStock}</span>
+                        in stock
+                      </div>
+
+                      <div className="favorites-page__actions">
+                        <Link
+                          className="favorites-page__button favorites-page__button--primary"
+                          to={`/collection/${product.id}`}
+                        >
+                          View piece
+                        </Link>
+                        <button
+                          className="favorites-page__button"
+                          disabled={isPending}
+                          onClick={() => {
+                            void handleRemove(product);
+                          }}
+                          type="button"
+                        >
+                          {isPending ? (
+                            <LoaderCircle className="favorites-page__button-icon favorites-page__button-icon--spinning" />
+                          ) : (
+                            <Heart className="favorites-page__button-icon" />
+                          )}
+                          {isPending ? "Updating" : "Remove"}
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
           </motion.section>
         )}
       </div>

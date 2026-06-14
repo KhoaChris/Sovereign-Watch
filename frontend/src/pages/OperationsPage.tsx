@@ -32,12 +32,22 @@ import {
 import { Link, Navigate } from "react-router-dom";
 
 import { useFeedback } from "../feedback/feedback-context";
+import {
+  ADMIN_CATALOG_DRAFTS_EVENT,
+  ADMIN_CATALOG_DRAFTS_STORAGE_KEY,
+  MAX_STORED_ADMIN_CATALOG_DRAFTS,
+  clearAdminCatalogDrafts,
+  getAdminCatalogDraftKey,
+  readAdminCatalogDrafts,
+  removeAdminCatalogDraft,
+} from "../services/admin-catalog-drafts";
 import { storefrontApi } from "../services/api";
 import { useStorefront } from "../storefront/storefront-context";
 import {
   formatProductSize,
   normalizeProductSizeValue,
   sanitizeProductSizeDraft,
+  type AdminAiCatalogDraft,
   type CreateProductPayload,
   type OrderRecord,
   type OrderStatus,
@@ -71,6 +81,8 @@ interface ProductFormState {
   type: string;
   variants: ProductVariantDraft[];
 }
+
+type ProductDraftTemplate = AdminAiCatalogDraft;
 
 interface SalesSeriesPoint {
   count: number;
@@ -121,6 +133,8 @@ const EMBEDDED_IMAGE_MAX_CHARS = 180_000;
 const EMBEDDED_IMAGE_MIN_QUALITY = 0.42;
 const EMBEDDED_IMAGE_TOTAL_MAX_CHARS = 600_000;
 const OPERATIONS_PDF_EXPORT_CLASS = "operations-pdf-export";
+const PRODUCT_DRAFT_PAGE_SIZE_OPTIONS = [3, 6, 12, 24];
+const PRODUCT_DRAFT_DEFAULT_PAGE_SIZE = 6;
 
 const BRAND_PRESETS: AdminPresetOption[] = [
   {
@@ -169,6 +183,80 @@ const CATEGORY_PRESETS: AdminPresetOption[] = [
   {
     label: "Heritage",
     detail: "Classic archival, dress-led, or collector-minded references.",
+  },
+];
+
+const PRODUCT_DRAFT_TEMPLATES: ProductDraftTemplate[] = [
+  {
+    brandId: "Rolex",
+    categoryId: "Chronograph",
+    description:
+      "Rolex Cosmograph Daytona reference 126500LN in Oystersteel, 40 mm, with a black dial, contrasting counter rings, black Cerachrom tachymetric bezel, and Oyster bracelet.",
+    imageUrl: "/editorial/rolex5-linitedBlack.png",
+    name: "Rolex Cosmograph Daytona 126500LN",
+    reference: "126500LN",
+    sourceUrl:
+      "https://www.rolex.com/en-us/watches/cosmograph-daytona/m126500ln-0002",
+    strategyNote:
+      "High-demand steel chronograph draft with exact Rolex reference naming.",
+    type: "Cosmograph Daytona",
+    variants: [
+      {
+        color: "Black dial",
+        discountPrice: null,
+        price: 16900,
+        size: "40",
+        sku: "ROLE-DAYTN-BLA-40-01",
+        stockQuantity: 2,
+      },
+    ],
+  },
+  {
+    brandId: "Rolex",
+    categoryId: "Heritage",
+    description:
+      "Rolex Datejust 41 reference 126334 in Oystersteel and white gold, 41 mm, with a silver dial, fluted bezel, and Jubilee bracelet.",
+    imageUrl: "/editorial/rolex1.png",
+    name: "Rolex Datejust 41 126334 Silver Dial",
+    reference: "126334",
+    sourceUrl: "https://www.rolex.com/en-us/watches/datejust/m126334-0001",
+    strategyNote:
+      "Classic Datejust 41 broadens daily luxury beyond sport chronographs.",
+    type: "Datejust 41",
+    variants: [
+      {
+        color: "Silver dial / Jubilee",
+        discountPrice: null,
+        price: 10600,
+        size: "41",
+        sku: "ROLE-DATEJ-SIL-41-01",
+        stockQuantity: 3,
+      },
+    ],
+  },
+  {
+    brandId: "Hublot",
+    categoryId: "Luxury",
+    description:
+      "Hublot Big Bang Unico Black Magic reference 441.CI.1171.RX, 42 mm, with black ceramic case, skeleton dial, and black structured rubber strap.",
+    imageUrl: "/editorial/HublotBB2.png",
+    name: "Hublot Big Bang Unico Black Magic 42mm",
+    reference: "441.CI.1171.RX",
+    sourceUrl:
+      "https://www.hublot.com/en-us/watches/big-bang/big-bang-unico-black-magic-42-mm",
+    strategyNote:
+      "Black ceramic Hublot fills the stealth sport-luxury slot.",
+    type: "Big Bang Unico",
+    variants: [
+      {
+        color: "Black ceramic",
+        discountPrice: null,
+        price: 19700,
+        size: "42",
+        sku: "HUBL-UNICO-BLA-42-01",
+        stockQuantity: 2,
+      },
+    ],
   },
 ];
 
@@ -553,6 +641,9 @@ const SHIPPING_STATUS_OPTIONS: ShippingStatus[] = [
   "returned",
 ];
 const SALES_LEDGER_PAGE_SIZE_OPTIONS = [5, 10, 20, 50] as const;
+const SALES_LEDGER_DEFAULT_PAGE_SIZE = 10;
+const SALES_LEDGER_MOBILE_PAGE_SIZE = 5;
+const SALES_LEDGER_MOBILE_MEDIA_QUERY = "(max-width: 760px)";
 const SALES_LEDGER_PAYMENT_FILTERS: Array<{
   label: string;
   value: SalesLedgerPaymentFilter;
@@ -562,6 +653,17 @@ const SALES_LEDGER_PAYMENT_FILTERS: Array<{
   { label: "Processing", value: "processing" },
   { label: "Failed", value: "failed" },
 ];
+
+function getDefaultSalesLedgerPageSize(): number {
+  if (
+    typeof window !== "undefined" &&
+    window.matchMedia(SALES_LEDGER_MOBILE_MEDIA_QUERY).matches
+  ) {
+    return SALES_LEDGER_MOBILE_PAGE_SIZE;
+  }
+
+  return SALES_LEDGER_DEFAULT_PAGE_SIZE;
+}
 
 const ADMIN_SECTIONS = [
   {
@@ -626,6 +728,103 @@ function createEmptyProductForm(): ProductFormState {
     type: "",
     variants: [createEmptyVariantDraft()],
   };
+}
+
+function resolveDraftImageUrl(imageUrl: string): string {
+  if (!imageUrl) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(imageUrl) || imageUrl.startsWith("data:image/")) {
+    return imageUrl;
+  }
+
+  if (typeof window === "undefined") {
+    return imageUrl;
+  }
+
+  return new URL(imageUrl, window.location.origin).toString();
+}
+
+function createVariantDraftFromAi(
+  variant: AdminAiCatalogDraft["variants"][number],
+): ProductVariantDraft {
+  return {
+    color: variant.color,
+    discountPrice:
+      variant.discountPrice === null ? "" : String(variant.discountPrice),
+    price: String(variant.price),
+    size: variant.size,
+    sku: variant.sku,
+    stockQuantity: String(variant.stockQuantity),
+  };
+}
+
+function createProductFormFromDraft(
+  draft: ProductDraftTemplate,
+): ProductFormState {
+  const draftImageUrl = resolveDraftImageUrl(draft.imageUrl);
+
+  return {
+    brandId: draft.brandId,
+    categoryId: draft.categoryId,
+    description: draft.description,
+    images: draftImageUrl ? [draftImageUrl] : [],
+    name: draft.name,
+    type: draft.type,
+    variants: draft.variants.map(createVariantDraftFromAi),
+  };
+}
+
+function getProductDraftTemplateKey(draft: ProductDraftTemplate): string {
+  return getAdminCatalogDraftKey(draft);
+}
+
+function mergeProductDraftTemplates(
+  primary: ProductDraftTemplate[],
+  fallback: ProductDraftTemplate[],
+): ProductDraftTemplate[] {
+  const byKey = new Map<string, ProductDraftTemplate>();
+
+  for (const draft of [...primary, ...fallback]) {
+    byKey.set(getProductDraftTemplateKey(draft), draft);
+  }
+
+  return Array.from(byKey.values());
+}
+
+function productDraftMatchesSearch(
+  draft: ProductDraftTemplate,
+  query: string,
+): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  const variantSearch = draft.variants
+    .map(
+      (variant) =>
+        `${variant.sku} ${variant.color} ${variant.size} ${formatProductSize(
+          variant.size,
+        )}`,
+    )
+    .join(" ");
+  const haystack = [
+    draft.name,
+    draft.brandId,
+    draft.categoryId,
+    draft.type,
+    draft.reference,
+    draft.strategyNote,
+    draft.description,
+    variantSearch,
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return haystack.includes(normalizedQuery);
 }
 
 function formatCurrency(value: number): string {
@@ -1474,35 +1673,84 @@ function SalesBars({ points }: { points: SalesSeriesPoint[] }) {
   );
 }
 
-function DistributionMeter({ segments }: { segments: DonutSegment[] }) {
+function DistributionMeter({
+  lowStockProducts,
+  onSelectProduct,
+  segments,
+}: {
+  lowStockProducts: ProductRecord[];
+  onSelectProduct: (product: ProductRecord) => void;
+  segments: DonutSegment[];
+}) {
   const total = segments.reduce((sum, segment) => sum + segment.value, 0);
   const dominantSegment = segments.reduce<DonutSegment | null>(
     (current, segment) =>
       !current || segment.value > current.value ? segment : current,
     null,
   );
+  const capturedSegment =
+    segments.find((segment) => segment.label === "Captured") ?? null;
+  const inFlowSegment =
+    segments.find((segment) => segment.label === "In flow") ?? null;
+  const exceptionSegment =
+    segments.find((segment) => segment.label === "Exceptions") ?? null;
+  const capturedShare =
+    total > 0 && capturedSegment ? (capturedSegment.value / total) * 100 : 0;
+  const inFlowShare =
+    total > 0 && inFlowSegment ? (inFlowSegment.value / total) * 100 : 0;
+  const exceptionShare =
+    total > 0 && exceptionSegment ? (exceptionSegment.value / total) * 100 : 0;
+  const pressureLevel =
+    exceptionShare > 0
+      ? "Exception watch"
+      : lowStockProducts.length > 0
+        ? "Inventory watch"
+        : "Clean flow";
 
   return (
     <div className="operations-distribution">
-      <div className="operations-distribution__hero">
-        <div
-          aria-hidden="true"
-          className="operations-distribution__donut"
-          style={{ background: createDonutBackground(segments) }}
-        >
-          <div className="operations-distribution__donut-core">
-            <strong>{total}</strong>
-            <span>orders</span>
+      <div className="operations-distribution__top">
+        <div className="operations-distribution__hero">
+          <div
+            aria-hidden="true"
+            className="operations-distribution__donut"
+            style={{ background: createDonutBackground(segments) }}
+          >
+            <div className="operations-distribution__donut-core">
+              <strong>{total}</strong>
+              <span>orders</span>
+            </div>
+          </div>
+          <div className="operations-distribution__summary">
+            <span>Dominant status</span>
+            <strong>{dominantSegment?.label ?? "No orders"}</strong>
+            <p>
+              {total > 0
+                ? `${dominantSegment?.value ?? 0} of ${total} orders sit in this lane.`
+                : "No order activity is available yet."}
+            </p>
           </div>
         </div>
-        <div className="operations-distribution__summary">
-          <span>Dominant status</span>
-          <strong>{dominantSegment?.label ?? "No orders"}</strong>
-          <p>
-            {total > 0
-              ? `${dominantSegment?.value ?? 0} of ${total} orders sit in this lane.`
-              : "No order activity is available yet."}
-          </p>
+
+        <div className="operations-distribution__cards">
+          <div className="operations-distribution__card operations-distribution__card--captured">
+            <span>Captured</span>
+            <strong>{capturedShare.toFixed(0)}%</strong>
+            <p>{capturedSegment?.value ?? 0} paid or delivered orders</p>
+          </div>
+          <div className="operations-distribution__card operations-distribution__card--flow">
+            <span>In flow</span>
+            <strong>{inFlowShare.toFixed(0)}%</strong>
+            <p>{inFlowSegment?.value ?? 0} orders still moving</p>
+          </div>
+          <div className="operations-distribution__card operations-distribution__card--pressure">
+            <span>{pressureLevel}</span>
+            <strong>{lowStockProducts.length}</strong>
+            <p>
+              {exceptionSegment?.value ?? 0} exceptions ·{" "}
+              {lowStockProducts.length} low-stock products
+            </p>
+          </div>
         </div>
       </div>
 
@@ -1515,15 +1763,74 @@ function DistributionMeter({ segments }: { segments: DonutSegment[] }) {
               key={segment.label}
               className="operations-distribution__legend-row"
             >
-              <span
-                className="operations-distribution__legend-swatch"
-                style={{ backgroundColor: segment.color }}
-              />
-              <span>{segment.label}</span>
+              <div className="operations-distribution__legend-label">
+                <span
+                  className="operations-distribution__legend-swatch"
+                  style={{ backgroundColor: segment.color }}
+                />
+                <span>{segment.label}</span>
+              </div>
+              <div className="operations-distribution__legend-track">
+                <span
+                  style={{
+                    backgroundColor: segment.color,
+                    width: `${Math.max(share, segment.value > 0 ? 4 : 0)}%`,
+                  }}
+                />
+              </div>
               <strong>{share.toFixed(0)}%</strong>
             </div>
           );
         })}
+      </div>
+
+      <div className="operations-stock-list">
+        <div className="operations-stock-list__head">
+          <div>
+            <strong>Low stock queue</strong>
+            <p>Tap a reference to open it in Catalog Manager.</p>
+          </div>
+          <span>{lowStockProducts.length} items</span>
+        </div>
+        <div className="operations-stock-list__grid">
+          {lowStockProducts.slice(0, 4).map((product) => {
+            const stock = productStock(product);
+            const leadImage = product.images[0] ?? null;
+
+            return (
+              <button
+                key={product.id}
+                className="operations-stock-list__item"
+                onClick={() => onSelectProduct(product)}
+                type="button"
+              >
+                <span className="operations-stock-list__media">
+                  {leadImage ? (
+                    <img alt={product.name} src={leadImage} />
+                  ) : (
+                    <span>{product.name.slice(0, 1)}</span>
+                  )}
+                </span>
+                <div>
+                  <strong>{product.name}</strong>
+                  <span>
+                    {humanizeToken(product.brandId)} ·{" "}
+                    {humanizeToken(product.categoryId)}
+                  </span>
+                </div>
+                <b>
+                  <span>{stock}</span>
+                  left
+                </b>
+              </button>
+            );
+          })}
+        </div>
+        {lowStockProducts.length === 0 ? (
+          <div className="operations-stock-list__empty">
+            No low-stock product requires attention.
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -1561,6 +1868,12 @@ export function OperationsPage({
   const [productForm, setProductForm] = useState<ProductFormState>(
     createEmptyProductForm(),
   );
+  const [aiProductDrafts, setAiProductDrafts] = useState<ProductDraftTemplate[]>(
+    () => readAdminCatalogDrafts(),
+  );
+  const [activeProductDraftKey, setActiveProductDraftKey] = useState<
+    string | null
+  >(null);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(
     null,
   );
@@ -1578,12 +1891,20 @@ export function OperationsPage({
   const [salesLedgerPaymentFilter, setSalesLedgerPaymentFilter] =
     useState<SalesLedgerPaymentFilter>("all");
   const [salesLedgerPage, setSalesLedgerPage] = useState(1);
-  const [salesLedgerPageSize, setSalesLedgerPageSize] = useState(10);
+  const [salesLedgerPageSize, setSalesLedgerPageSize] = useState(
+    getDefaultSalesLedgerPageSize,
+  );
+  const [productDraftSearch, setProductDraftSearch] = useState("");
+  const [productDraftPage, setProductDraftPage] = useState(1);
+  const [productDraftPageSize, setProductDraftPageSize] = useState(
+    PRODUCT_DRAFT_DEFAULT_PAGE_SIZE,
+  );
   const [productSearch, setProductSearch] = useState("");
   const [reviewSearch, setReviewSearch] = useState("");
   const [reviewSort, setReviewSort] = useState<AdminReviewSortOption>("newest");
   const [pendingReviewId, setPendingReviewId] = useState<string | null>(null);
   const deferredSalesLedgerSearch = useDeferredValue(salesLedgerSearch);
+  const deferredProductDraftSearch = useDeferredValue(productDraftSearch);
   const deferredProductSearch = useDeferredValue(productSearch);
   const deferredReviewSearch = useDeferredValue(reviewSearch);
   const [error, setError] = useState<string | null>(null);
@@ -1628,6 +1949,31 @@ export function OperationsPage({
       active = false;
     };
   }, [isAdmin, isAuthenticated]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia(SALES_LEDGER_MOBILE_MEDIA_QUERY);
+    const syncMobilePageSize = () => {
+      if (!mediaQuery.matches) {
+        return;
+      }
+
+      setSalesLedgerPageSize((currentPageSize) =>
+        Math.min(currentPageSize, SALES_LEDGER_MOBILE_PAGE_SIZE),
+      );
+      setSalesLedgerPage(1);
+    };
+
+    syncMobilePageSize();
+    mediaQuery.addEventListener("change", syncMobilePageSize);
+
+    return () => {
+      mediaQuery.removeEventListener("change", syncMobilePageSize);
+    };
+  }, []);
 
   const sortedOrders = useMemo(() => {
     return [...orders].sort((left, right) => {
@@ -1744,6 +2090,87 @@ export function OperationsPage({
       Math.min(Math.max(currentPage, 1), salesLedgerTotalPages),
     );
   }, [salesLedgerTotalPages]);
+
+  useEffect(() => {
+    const handleDraftUpdate = (event: Event) => {
+      const customEvent = event as CustomEvent<ProductDraftTemplate[]>;
+      setAiProductDrafts(
+        Array.isArray(customEvent.detail)
+          ? customEvent.detail
+          : readAdminCatalogDrafts(),
+      );
+    };
+    const handleStorageUpdate = (event: StorageEvent) => {
+      if (!event.key || event.key === ADMIN_CATALOG_DRAFTS_STORAGE_KEY) {
+        setAiProductDrafts(readAdminCatalogDrafts());
+      }
+    };
+
+    window.addEventListener(ADMIN_CATALOG_DRAFTS_EVENT, handleDraftUpdate);
+    window.addEventListener("storage", handleStorageUpdate);
+
+    return () => {
+      window.removeEventListener(ADMIN_CATALOG_DRAFTS_EVENT, handleDraftUpdate);
+      window.removeEventListener("storage", handleStorageUpdate);
+    };
+  }, []);
+
+  const productDraftTemplates = useMemo(
+    () =>
+      mergeProductDraftTemplates(
+        aiProductDrafts,
+        PRODUCT_DRAFT_TEMPLATES,
+      ),
+    [aiProductDrafts],
+  );
+  const storedProductDraftKeys = useMemo(() => {
+    return new Set(aiProductDrafts.map(getProductDraftTemplateKey));
+  }, [aiProductDrafts]);
+  const filteredProductDraftTemplates = useMemo(() => {
+    return productDraftTemplates.filter((draft) =>
+      productDraftMatchesSearch(draft, deferredProductDraftSearch),
+    );
+  }, [deferredProductDraftSearch, productDraftTemplates]);
+  const productDraftTotalPages = Math.max(
+    1,
+    Math.ceil(filteredProductDraftTemplates.length / productDraftPageSize),
+  );
+  const activeProductDraftPage = Math.min(
+    productDraftPage,
+    productDraftTotalPages,
+  );
+  const productDraftStartIndex =
+    (activeProductDraftPage - 1) * productDraftPageSize;
+  const pagedProductDraftTemplates = useMemo(() => {
+    return filteredProductDraftTemplates.slice(
+      productDraftStartIndex,
+      productDraftStartIndex + productDraftPageSize,
+    );
+  }, [
+    filteredProductDraftTemplates,
+    productDraftPageSize,
+    productDraftStartIndex,
+  ]);
+  const productDraftRangeStart =
+    filteredProductDraftTemplates.length === 0 ? 0 : productDraftStartIndex + 1;
+  const productDraftRangeEnd = Math.min(
+    productDraftStartIndex + productDraftPageSize,
+    filteredProductDraftTemplates.length,
+  );
+  const productDraftPaginationTokens = useMemo(
+    () => buildPaginationTokens(activeProductDraftPage, productDraftTotalPages),
+    [activeProductDraftPage, productDraftTotalPages],
+  );
+
+  useEffect(() => {
+    setProductDraftPage(1);
+  }, [deferredProductDraftSearch, productDraftPageSize]);
+
+  useEffect(() => {
+    setProductDraftPage((currentPage) =>
+      Math.min(Math.max(currentPage, 1), productDraftTotalPages),
+    );
+  }, [productDraftTotalPages]);
 
   const filteredProducts = useMemo(() => {
     const query = deferredProductSearch.trim().toLowerCase();
@@ -2037,6 +2464,7 @@ export function OperationsPage({
   function selectProduct(product: ProductRecord): void {
     startTransition(() => {
       setSelectedProductId(product.id);
+      setActiveProductDraftKey(null);
       setProductForm(createProductForm(product));
       setImageUploadError(null);
       setImageUploadMessage(null);
@@ -2047,10 +2475,90 @@ export function OperationsPage({
   function resetProductEditor(): void {
     startTransition(() => {
       setSelectedProductId(null);
+      setActiveProductDraftKey(null);
       setProductForm(createEmptyProductForm());
       setImageUploadError(null);
       setImageUploadMessage(null);
       setSelectedImageNames([]);
+    });
+  }
+
+  function removeProductDraftTemplate(draft: ProductDraftTemplate): void {
+    const draftKey = getProductDraftTemplateKey(draft);
+
+    if (!storedProductDraftKeys.has(draftKey)) {
+      return;
+    }
+
+    setAiProductDrafts(removeAdminCatalogDraft(draftKey));
+
+    if (activeProductDraftKey === draftKey) {
+      setActiveProductDraftKey(null);
+    }
+
+    notify({
+      description: "The generated draft was removed from Draft Starters.",
+      title: `${draft.name} draft removed`,
+      tone: "info",
+    });
+  }
+
+  async function clearProductDraftTemplates(): Promise<void> {
+    if (aiProductDrafts.length === 0) {
+      notify({
+        description: "There are no generated AI drafts to clear.",
+        title: "Draft queue is already clean",
+        tone: "info",
+      });
+      return;
+    }
+
+    const accepted = await confirm({
+      confirmLabel: "Clear drafts",
+      description: `This removes ${aiProductDrafts.length} generated draft${
+        aiProductDrafts.length === 1 ? "" : "s"
+      } from Draft Starters. Published products and the default starter references stay untouched.`,
+      title: "Clear generated product drafts?",
+      tone: "danger",
+    });
+
+    if (!accepted) {
+      return;
+    }
+
+    clearAdminCatalogDrafts();
+    setAiProductDrafts([]);
+    setActiveProductDraftKey(null);
+    setProductDraftPage(1);
+    notify({
+      description:
+        "Generated drafts were cleared. You can ask Store AI for a new batch anytime.",
+      title: "Draft queue cleared",
+      tone: "success",
+    });
+  }
+
+  function applyProductDraftTemplate(draft: ProductDraftTemplate): void {
+    const draftKey = getProductDraftTemplateKey(draft);
+
+    startTransition(() => {
+      setSelectedProductId(null);
+      setActiveProductDraftKey(
+        storedProductDraftKeys.has(draftKey) ? draftKey : null,
+      );
+      setProductForm(createProductFormFromDraft(draft));
+      setImageUploadError(null);
+      setImageUploadMessage(
+        "Draft loaded with a portrait image candidate. Review the image and reference before publishing.",
+      );
+      setSelectedImageNames([]);
+    });
+
+    notify({
+      description:
+        "The editor was prefilled with image, reference, variant, and stock. Save still goes through the normal admin endpoint.",
+      title: `${draft.name} draft loaded`,
+      tone: "success",
     });
   }
 
@@ -2238,16 +2746,23 @@ export function OperationsPage({
         });
       } else {
         const createdProduct = await storefrontApi.createProduct(payload);
+        const consumedDraftKey = activeProductDraftKey;
 
         setProducts((current) =>
           sortProductsForAdmin([createdProduct, ...current]),
         );
+        if (consumedDraftKey) {
+          setAiProductDrafts(removeAdminCatalogDraft(consumedDraftKey));
+          setActiveProductDraftKey(null);
+        }
         startTransition(() => {
           setSelectedProductId(createdProduct.id);
           setProductForm(createProductForm(createdProduct));
         });
         notify({
-          description: "The new product is live in the Firestore catalog.",
+          description: consumedDraftKey
+            ? "The new product is live and its AI draft was removed from Draft Starters."
+            : "The new product is live in the Firestore catalog.",
           title: `${createdProduct.name} created`,
           tone: "success",
         });
@@ -2424,6 +2939,54 @@ export function OperationsPage({
     <div className="orders-page orders-page--admin">
       <div className="orders-page__ambient" />
       <div className="orders-page__shell orders-page__shell--operations">
+        <section className="operations-hero" id="operations-overview">
+          <div className="operations-hero__copy">
+            <p className="orders-page__eyebrow">Admin operations</p>
+            <h1 className="orders-page__title">DASHBOARD</h1>
+            <p className="orders-page__copy">
+              Fundamentals on managing your business.
+            </p>
+          </div>
+
+          <div className="operations-hero__actions" id="operations-export">
+            <button
+              className="orders-page__button"
+              disabled={refreshing}
+              onClick={() => {
+                void handleRefresh();
+              }}
+              type="button"
+            >
+              <RefreshCw size={16} />
+              {refreshing ? "Refreshing" : "Refresh"}
+            </button>
+            <button
+              className="orders-page__button"
+              onClick={handlePrint}
+              type="button"
+            >
+              <Printer size={16} />
+              Print report
+            </button>
+            <button
+              className="orders-page__button"
+              onClick={handleExportPdf}
+              type="button"
+            >
+              <FileDown size={16} />
+              Export PDF
+            </button>
+            <button
+              className="orders-page__button orders-page__button--primary"
+              onClick={handleExportCsv}
+              type="button"
+            >
+              <Download size={16} />
+              Export CSV
+            </button>
+          </div>
+        </section>
+
         <aside className="operations-sidebar">
           <div className="operations-sidebar__brand">
             <p className="operations-sidebar__brand-kicker">Watch Shop</p>
@@ -2494,54 +3057,6 @@ export function OperationsPage({
         </aside>
 
         <div className="operations-main">
-          <section className="operations-hero" id="operations-overview">
-            <div className="operations-hero__copy">
-              <p className="orders-page__eyebrow">Admin operations</p>
-              <h1 className="orders-page__title">DASHBOARD</h1>
-              <p className="orders-page__copy">
-                Fundamentals on managing your business.
-              </p>
-            </div>
-
-            <div className="operations-hero__actions" id="operations-export">
-              <button
-                className="orders-page__button"
-                disabled={refreshing}
-                onClick={() => {
-                  void handleRefresh();
-                }}
-                type="button"
-              >
-                <RefreshCw size={16} />
-                {refreshing ? "Refreshing" : "Refresh"}
-              </button>
-              <button
-                className="orders-page__button"
-                onClick={handlePrint}
-                type="button"
-              >
-                <Printer size={16} />
-                Print report
-              </button>
-              <button
-                className="orders-page__button"
-                onClick={handleExportPdf}
-                type="button"
-              >
-                <FileDown size={16} />
-                Export PDF
-              </button>
-              <button
-                className="orders-page__button orders-page__button--primary"
-                onClick={handleExportCsv}
-                type="button"
-              >
-                <Download size={16} />
-                Export CSV
-              </button>
-            </div>
-          </section>
-
           {error ? <p className="orders-page__error">{error}</p> : null}
 
           {loading ? (
@@ -2594,39 +3109,11 @@ export function OperationsPage({
                   </span>
                 </div>
 
-                <DistributionMeter segments={statusSegments} />
-
-                <div className="operations-stock-list">
-                  <div className="operations-stock-list__head">
-                    <strong>Low stock queue</strong>
-                    <span>{lowStockProducts.length} items</span>
-                  </div>
-                  {lowStockProducts.slice(0, 4).map((product) => (
-                    <button
-                      key={product.id}
-                      className="operations-stock-list__item"
-                      onClick={() => selectProduct(product)}
-                      type="button"
-                    >
-                      <div>
-                        <strong>{product.name}</strong>
-                        <span>
-                          {humanizeToken(product.brandId)} ·{" "}
-                          {humanizeToken(product.categoryId)}
-                        </span>
-                      </div>
-                      <b>
-                        <span>{productStock(product)}</span>
-                        left
-                      </b>
-                    </button>
-                  ))}
-                  {lowStockProducts.length === 0 ? (
-                    <div className="operations-stock-list__empty">
-                      No low-stock product requires attention.
-                    </div>
-                  ) : null}
-                </div>
+                <DistributionMeter
+                  lowStockProducts={lowStockProducts}
+                  onSelectProduct={selectProduct}
+                  segments={statusSegments}
+                />
               </section>
 
               <section
@@ -2758,28 +3245,39 @@ export function OperationsPage({
                         getPaymentStatusHeadline(paymentStatus);
                       const paymentDetail =
                         getPaymentStatusDetail(paymentStatus);
+                      const recipientInitial =
+                        shippingSummary.recipient.trim().slice(0, 1).toUpperCase() ||
+                        "W";
 
                       return (
                         <motion.article
                           key={order.id}
-                          className="operations-order-card"
+                          className={`operations-order-card operations-order-card--${paymentTone}`}
                           initial={{ opacity: 0, y: 20 }}
                           transition={{ duration: 0.4 }}
                           viewport={{ amount: 0.16, once: true }}
                           whileInView={{ opacity: 1, y: 0 }}
                         >
                           <div className="operations-order-card__summary">
-                            <div className="operations-order-card__identity">
-                              <p className="orders-page__eyebrow">
-                                {order.orderNumber}
-                              </p>
-                              <h3>{shippingSummary.recipient}</h3>
-                              <p className="operations-order-card__address">
-                                {shippingSummary.detail}
-                              </p>
-                              <p className="operations-order-card__date">
-                                {formatDateTime(order.createdAt)}
-                              </p>
+                            <div className="operations-order-card__client">
+                              <span
+                                aria-hidden="true"
+                                className="operations-order-card__avatar"
+                              >
+                                {recipientInitial}
+                              </span>
+                              <div className="operations-order-card__identity">
+                                <div className="operations-order-card__meta-row">
+                                  <p className="orders-page__eyebrow">
+                                    {order.orderNumber}
+                                  </p>
+                                  <span>{formatDateTime(order.createdAt)}</span>
+                                </div>
+                                <h3>{shippingSummary.recipient}</h3>
+                                <p className="operations-order-card__address">
+                                  {shippingSummary.detail}
+                                </p>
+                              </div>
                             </div>
                             <div className="operations-order-card__summary-rail">
                               <div className="operations-order-card__status-stack">
@@ -2802,12 +3300,22 @@ export function OperationsPage({
 
                           <div className="operations-order-card__snapshot">
                             <div className="operations-order-card__snapshot-item operations-order-card__snapshot-item--wide">
-                              <span>Reserve contents</span>
+                              <div className="operations-order-card__snapshot-head">
+                                <span className="operations-order-card__snapshot-icon">
+                                  <Package size={15} />
+                                </span>
+                                <span>Reserve contents</span>
+                              </div>
                               <strong>{unitSummary}</strong>
                               <p>{itemSummary}</p>
                             </div>
                             <div className="operations-order-card__snapshot-item">
-                              <span>Payment</span>
+                              <div className="operations-order-card__snapshot-head">
+                                <span className="operations-order-card__snapshot-icon">
+                                  <ShieldCheck size={15} />
+                                </span>
+                                <span>Payment</span>
+                              </div>
                               <div
                                 className={`operations-payment-status operations-payment-status--${paymentTone}`}
                               >
@@ -2816,13 +3324,23 @@ export function OperationsPage({
                               </div>
                             </div>
                             <div className="operations-order-card__snapshot-item">
-                              <span>Shipping</span>
+                              <div className="operations-order-card__snapshot-head">
+                                <span className="operations-order-card__snapshot-icon">
+                                  <Truck size={15} />
+                                </span>
+                                <span>Shipping</span>
+                              </div>
                               <strong>
                                 {formatStatusLabel(order.shipping?.status)}
                               </strong>
                             </div>
                             <div className="operations-order-card__snapshot-item">
-                              <span>Method</span>
+                              <div className="operations-order-card__snapshot-head">
+                                <span className="operations-order-card__snapshot-icon">
+                                  <ShoppingBag size={15} />
+                                </span>
+                                <span>Method</span>
+                              </div>
                               <strong>
                                 {formatStatusLabel(order.payment?.method)}
                               </strong>
@@ -2832,6 +3350,7 @@ export function OperationsPage({
                           <div className="operations-order-card__dock">
                             <div className="operations-order-card__dock-head">
                               <span>Fulfillment dock</span>
+                              <strong>Live order controls</strong>
                             </div>
 
                             <div className="operations-order-card__controls">
@@ -3039,6 +3558,257 @@ export function OperationsPage({
                   <span className="operations-panel__meta">
                     Firestore sync through admin product endpoints
                   </span>
+                </div>
+
+                <div
+                  aria-label="AI-assisted product draft starters"
+                  className="operations-draft"
+                >
+                  <div className="operations-draft__head">
+                    <div>
+                      <p className="orders-page__eyebrow">Draft starters</p>
+                      <h3>Prefill the editor, then validate before publish</h3>
+                    </div>
+                    <div className="operations-draft__head-actions">
+                      <span className="operations-panel__meta">
+                        {aiProductDrafts.length > 0
+                          ? `${aiProductDrafts.length} AI draft${aiProductDrafts.length === 1 ? "" : "s"} ready`
+                          : "Official reference, image prefill"}
+                      </span>
+                      <button
+                        className="orders-page__button operations-draft__clear"
+                        disabled={aiProductDrafts.length === 0}
+                        onClick={() => {
+                          void clearProductDraftTemplates();
+                        }}
+                        type="button"
+                      >
+                        <Trash2 size={15} />
+                        Clear AI drafts
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="operations-draft__toolbar">
+                    <label className="operations-draft__search">
+                      <Search aria-hidden="true" size={17} />
+                      <input
+                        aria-label="Search product drafts"
+                        onChange={(event) =>
+                          setProductDraftSearch(event.target.value)
+                        }
+                        placeholder="Search draft, brand, reference, SKU"
+                        type="search"
+                        value={productDraftSearch}
+                      />
+                    </label>
+
+                    <div className="operations-draft__controls">
+                      <span>
+                        Showing {productDraftRangeStart}-{productDraftRangeEnd} of{" "}
+                        {filteredProductDraftTemplates.length}
+                      </span>
+                      <label>
+                        Rows
+                        <select
+                          aria-label="Product drafts per page"
+                          onChange={(event) =>
+                            setProductDraftPageSize(Number(event.target.value))
+                          }
+                          value={productDraftPageSize}
+                        >
+                          {PRODUCT_DRAFT_PAGE_SIZE_OPTIONS.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+
+                  {filteredProductDraftTemplates.length === 0 ? (
+                    <div className="operations-draft__empty">
+                      <strong>No draft matches this search.</strong>
+                      <p>
+                        Try a brand, reference, SKU, or ask Store AI to generate
+                        a fresh batch.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="operations-draft__grid">
+                      {pagedProductDraftTemplates.map((draft, draftIndex) => {
+                        const draftKey = getProductDraftTemplateKey(draft);
+                        const firstVariant = draft.variants[0];
+                        const isGeneratedDraft =
+                          storedProductDraftKeys.has(draftKey);
+
+                      return (
+                        <article
+                          className={`operations-draft-card ${
+                            isGeneratedDraft
+                              ? "operations-draft-card--generated"
+                              : ""
+                          }`}
+                          key={draftKey}
+                        >
+                          <div className="operations-draft-card__top">
+                            <span className="operations-draft-card__kicker">
+                              {draft.categoryId}
+                            </span>
+                            <div className="operations-draft-card__top-actions">
+                              <span className="operations-draft-card__source">
+                                {isGeneratedDraft ? "AI" : "Starter"}
+                              </span>
+                              <span className="operations-draft-card__index">
+                                {String(
+                                  productDraftStartIndex + draftIndex + 1,
+                                ).padStart(2, "0")}
+                              </span>
+                              {isGeneratedDraft ? (
+                                <button
+                                  aria-label={`Remove ${draft.name} draft`}
+                                  className="operations-draft-card__remove"
+                                  onClick={() =>
+                                    removeProductDraftTemplate(draft)
+                                  }
+                                  type="button"
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <div className="operations-draft-card__visual">
+                            <img alt={draft.name} src={draft.imageUrl} />
+                          </div>
+
+                          <div className="operations-draft-card__body">
+                            <h4>{draft.name}</h4>
+                            <p>{draft.strategyNote}</p>
+                            <div className="operations-draft-card__taxonomy">
+                              <span>{draft.brandId}</span>
+                              <span>{draft.type}</span>
+                              <span>{draft.reference}</span>
+                            </div>
+                          </div>
+
+                          <div className="operations-draft-card__specs">
+                            <span>
+                              <strong>
+                                {formatCurrency(Number(firstVariant.price))}
+                              </strong>
+                              <small>Target</small>
+                            </span>
+                            <span>
+                              <strong>
+                                {formatProductSize(firstVariant.size, "Size")}
+                              </strong>
+                              <small>Case</small>
+                            </span>
+                            <span>
+                              <strong>{firstVariant.stockQuantity}</strong>
+                              <small>Stock</small>
+                            </span>
+                          </div>
+
+                          <div className="operations-draft-card__actions">
+                            <button
+                              className="orders-page__button operations-draft-card__primary"
+                              onClick={() => applyProductDraftTemplate(draft)}
+                              type="button"
+                            >
+                              <CirclePlus size={16} />
+                              Use draft
+                            </button>
+                            <a
+                              className="orders-page__button operations-draft-card__link"
+                              href={draft.sourceUrl}
+                              rel="noreferrer"
+                              target="_blank"
+                            >
+                              <Search size={16} />
+                              Official reference
+                            </a>
+                          </div>
+                        </article>
+                      );
+                      })}
+                    </div>
+                  )}
+
+                  <div
+                    aria-label="Draft starters pagination"
+                    className="operations-pagination operations-pagination--compact operations-draft__pagination"
+                  >
+                    <p>
+                      Page {activeProductDraftPage} of {productDraftTotalPages}
+                    </p>
+                    <div className="operations-pagination__controls">
+                      <button
+                        disabled={activeProductDraftPage <= 1}
+                        onClick={() =>
+                          setProductDraftPage((currentPage) =>
+                            Math.max(1, currentPage - 1),
+                          )
+                        }
+                        type="button"
+                      >
+                        Previous
+                      </button>
+                      {productDraftPaginationTokens.map((token, index) =>
+                        token === "ellipsis" ? (
+                          <span
+                            className="operations-pagination__ellipsis"
+                            key={`product-draft-ellipsis-${index}`}
+                          >
+                            ...
+                          </span>
+                        ) : (
+                          <button
+                            aria-current={
+                              token === activeProductDraftPage
+                                ? "page"
+                                : undefined
+                            }
+                            className={
+                              token === activeProductDraftPage
+                                ? "operations-pagination__page operations-pagination__page--active"
+                                : "operations-pagination__page"
+                            }
+                            key={token}
+                            onClick={() => setProductDraftPage(token)}
+                            type="button"
+                          >
+                            {token}
+                          </button>
+                        ),
+                      )}
+                      <button
+                        disabled={
+                          activeProductDraftPage >= productDraftTotalPages
+                        }
+                        onClick={() =>
+                          setProductDraftPage((currentPage) =>
+                            Math.min(productDraftTotalPages, currentPage + 1),
+                          )
+                        }
+                        type="button"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="operations-draft__note">
+                    These draft starters only fill the existing Catalog Manager
+                    form. Review brand, reference, variant, pricing, stock, and
+                    upload product imagery that matches the exact watch before
+                    saving. Generated queues are capped at{" "}
+                    {MAX_STORED_ADMIN_CATALOG_DRAFTS} stored drafts and rendered
+                    by page for large batches.
+                  </p>
                 </div>
 
                 <div className="operations-catalog">

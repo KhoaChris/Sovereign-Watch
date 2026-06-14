@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 
 import { useStorefront } from "../storefront/storefront-context";
+import { mergeAdminCatalogDrafts } from "../services/admin-catalog-drafts";
 import { storefrontApi } from "../services/api";
 import {
   clearFirebaseClientSession,
@@ -47,6 +48,7 @@ import {
   type SupportConversationPageCursor,
 } from "../services/support-chat";
 import type {
+  AdminAiOperationsMemoryMessage,
   OrderRecord,
   SupportChatChannel,
   SupportChatMessage,
@@ -58,13 +60,24 @@ import "../styles/components/support-chat.css";
 const CONVERSATION_PAGE_SIZE = 25;
 const QUICK_PROMPTS = [
   "Rolex under $30k",
+  "Build reserve cart under $30k",
   "40mm daily watch",
-  "Concierge picks under $25k",
+  "Compare Daytona and Oyster",
   "Shipping & authentication",
   "Track my order",
 ];
+const ADMIN_AI_QUICK_PROMPTS = [
+  "Operations summary",
+  "Compare revenue vs last month",
+  "Suggest strategy",
+  "Add 10 more new products",
+  "Orders pending shipment",
+  "Low stock products",
+];
 type ConversationStatusFilter = Extract<SupportConversationStatus, "open" | "archived">;
 type CustomerSupportChannel = SupportChatChannel;
+type AdminChatMode = "live" | "ai";
+const ADMIN_AI_MEMORY_BODY_MAX = 900;
 
 function formatChatTime(value: string): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -138,31 +151,79 @@ function mergeConversations(
   );
 }
 
+function createLocalMessageId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function compactAdminAiMemoryText(value: string, maxLength = ADMIN_AI_MEMORY_BODY_MAX): string {
+  return value.trim().slice(0, maxLength);
+}
+
+function createAdminAiMessage({
+  body,
+  senderRole,
+  suggestions = [],
+  user,
+}: {
+  body: string;
+  senderRole: "admin" | "bot";
+  suggestions?: SupportChatMessage["suggestions"];
+  user?: ReturnType<typeof useStorefront>["user"];
+}): SupportChatMessage {
+  const createdAt = new Date().toISOString();
+
+  return {
+    body,
+    channel: "ai",
+    conversationId: "admin-ai-operations",
+    createdAt,
+    id: createLocalMessageId(),
+    moderationFlags: [],
+    senderId: senderRole === "admin" ? user?.id ?? "admin" : "operations-ai",
+    senderName:
+      senderRole === "admin"
+        ? user?.fullName || "Admin"
+        : "Sovereign Operations AI",
+    senderRole,
+    suggestions,
+  };
+}
+
 function EmptyMessages({
   channel = "admin",
+  isAdminAi = false,
   isAdmin,
 }: {
   channel?: CustomerSupportChannel;
+  isAdminAi?: boolean;
   isAdmin: boolean;
 }) {
   const isAiChannel = channel === "ai";
 
   return (
     <div className="support-chat__empty">
-      {isAiChannel && !isAdmin ? (
+      {isAdminAi || (isAiChannel && !isAdmin) ? (
         <Bot className="support-chat__empty-icon" />
       ) : (
         <MessageCircle className="support-chat__empty-icon" />
       )}
       <p>
-        {isAdmin
+        {isAdminAi
+          ? "Ask the operations assistant."
+          : isAdmin
           ? "Select a customer conversation."
           : isAiChannel
             ? "Ask the AI concierge."
             : "Message the admin desk."}
       </p>
       <span>
-        {isAdmin
+        {isAdminAi
+          ? "Revenue, fulfillment, stock pressure, and product lookup stay separate from customer support."
+          : isAdmin
           ? "New customer messages appear here in realtime."
           : isAiChannel
             ? "Curated guidance for price, product fit, shipping, payment, and orders."
@@ -270,6 +331,8 @@ export function SupportChatWidget() {
   const [adminOrders, setAdminOrders] = useState<OrderRecord[]>([]);
   const [ordersError, setOrdersError] = useState<string | null>(null);
   const [messages, setMessages] = useState<SupportChatMessage[]>([]);
+  const [adminMode, setAdminMode] = useState<AdminChatMode>("live");
+  const [adminAiMessages, setAdminAiMessages] = useState<SupportChatMessage[]>([]);
   const [customerChannel, setCustomerChannel] =
     useState<CustomerSupportChannel | null>(null);
   const [conversationSearch, setConversationSearch] = useState("");
@@ -279,9 +342,18 @@ export function SupportChatWidget() {
   const [clearingHistory, setClearingHistory] = useState(false);
   const [sending, setSending] = useState(false);
   const messageListRef = useRef<HTMLDivElement | null>(null);
+  const isAdminAiMode = isAdmin && adminMode === "ai";
 
-  const activeConversationId = isAdmin ? selectedConversationId : user?.id ?? null;
+  const activeConversationId = isAdmin
+    ? isAdminAiMode
+      ? null
+      : selectedConversationId
+    : user?.id ?? null;
   const activeConversation = useMemo(() => {
+    if (isAdminAiMode) {
+      return null;
+    }
+
     if (!isAdmin) {
       return customerConversation;
     }
@@ -291,7 +363,13 @@ export function SupportChatWidget() {
         (conversation) => conversation.id === selectedConversationId,
       ) ?? null
     );
-  }, [conversations, customerConversation, isAdmin, selectedConversationId]);
+  }, [
+    conversations,
+    customerConversation,
+    isAdmin,
+    isAdminAiMode,
+    selectedConversationId,
+  ]);
 
   const filteredConversations = useMemo(() => {
     const searchTerm = normalizeConversationText(conversationSearch.trim());
@@ -339,10 +417,12 @@ export function SupportChatWidget() {
     !isAdmin && activeCustomerChannel === "admin" && !adminPresence.online;
   const visibleMessages = useMemo(
     () =>
-      isAdmin
+      isAdminAiMode
+        ? adminAiMessages
+        : isAdmin
         ? messages
         : messages.filter((message) => message.channel === activeCustomerChannel),
-    [activeCustomerChannel, isAdmin, messages],
+    [activeCustomerChannel, adminAiMessages, isAdmin, isAdminAiMode, messages],
   );
 
   const onlineLabel = isAdmin
@@ -351,14 +431,18 @@ export function SupportChatWidget() {
       ? "Admin online"
       : "AI concierge";
   const headerTitle = isAdmin
-    ? "Live desk"
+    ? isAdminAiMode
+      ? "Store AI"
+      : "Live desk"
     : activeCustomerChannel === "admin"
       ? adminPresence.online
         ? "Admin online"
         : "Admin offline"
       : "AI concierge";
   const statusLabel = isAdmin
-    ? "Admin online"
+    ? isAdminAiMode
+      ? "Operations AI ready"
+      : "Admin online"
     : activeCustomerChannel === "admin"
       ? adminPresence.online
         ? "Admin online"
@@ -377,6 +461,8 @@ export function SupportChatWidget() {
       setHasMoreConversations(false);
       setSelectedConversationId(null);
       setMessages([]);
+      setAdminMode("live");
+      setAdminAiMessages([]);
       setCustomerChannel(null);
       setAdminOrders([]);
       void clearFirebaseClientSession();
@@ -516,7 +602,7 @@ export function SupportChatWidget() {
   }, [isAdmin, ready]);
 
   useEffect(() => {
-    if (!isAdmin) {
+    if (!isAdmin || isAdminAiMode) {
       return;
     }
 
@@ -532,10 +618,10 @@ export function SupportChatWidget() {
     if (!selectedConversation) {
       setSelectedConversationId(filteredConversations[0].id);
     }
-  }, [filteredConversations, isAdmin, selectedConversationId]);
+  }, [filteredConversations, isAdmin, isAdminAiMode, selectedConversationId]);
 
   useEffect(() => {
-    if (!activeConversationId || !ready) {
+    if (isAdminAiMode || !activeConversationId || !ready) {
       setMessages([]);
       return;
     }
@@ -545,7 +631,7 @@ export function SupportChatWidget() {
       setMessages,
       (error) => setSetupError(error.message),
     );
-  }, [activeConversationId, ready]);
+  }, [activeConversationId, isAdminAiMode, ready]);
 
   useEffect(() => {
     if (!open || !activeConversationId || visibleMessages.length === 0) {
@@ -593,6 +679,23 @@ export function SupportChatWidget() {
     setOpen(true);
   }, [isAuthenticated, openAuthModal]);
 
+  const buildAdminAiMemory = useCallback((): AdminAiOperationsMemoryMessage[] => {
+    return adminAiMessages
+      .slice(-8)
+      .map((message) => ({
+        body: compactAdminAiMemoryText(message.body),
+        senderRole: message.senderRole === "bot" ? "bot" : "admin",
+        suggestions: message.suggestions.slice(0, 4).map((suggestion) => ({
+          href: compactAdminAiMemoryText(suggestion.href, 500),
+          image: "",
+          name: compactAdminAiMemoryText(suggestion.name, 120),
+          priceLabel: compactAdminAiMemoryText(suggestion.priceLabel, 160),
+          productId: compactAdminAiMemoryText(suggestion.productId, 120),
+          type: compactAdminAiMemoryText(suggestion.type, 80),
+        })),
+      }));
+  }, [adminAiMessages]);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -600,7 +703,7 @@ export function SupportChatWidget() {
       return;
     }
 
-    if (isAdmin && !activeConversationId) {
+    if (isAdmin && !isAdminAiMode && !activeConversationId) {
       return;
     }
 
@@ -613,9 +716,37 @@ export function SupportChatWidget() {
     const nextMessage = messageDraft;
     setMessageDraft("");
     setSending(true);
+    setSetupError(null);
 
     try {
-      if (isAdmin && activeConversationId) {
+      if (isAdminAiMode) {
+        const adminMessage = createAdminAiMessage({
+          body: nextMessage,
+          senderRole: "admin",
+          user,
+        });
+        const memory = buildAdminAiMemory();
+
+        setAdminAiMessages((current) => [...current, adminMessage]);
+
+        const reply = await storefrontApi.askAdminAiOperations({
+          memory,
+          message: nextMessage,
+        });
+
+        if ((reply.catalogDrafts ?? []).length > 0) {
+          mergeAdminCatalogDrafts(reply.catalogDrafts ?? []);
+        }
+
+        setAdminAiMessages((current) => [
+          ...current,
+          createAdminAiMessage({
+            body: reply.body,
+            senderRole: "bot",
+            suggestions: reply.suggestions,
+          }),
+        ]);
+      } else if (isAdmin && activeConversationId) {
         await sendAdminSupportMessage({
           admin: user,
           body: nextMessage,
@@ -631,27 +762,54 @@ export function SupportChatWidget() {
         });
       }
     } catch (error) {
-      setMessageDraft(nextMessage);
-      setSetupError(
-        error instanceof Error
-          ? error.message
-          : "Unable to send the message right now.",
-      );
+      if (isAdminAiMode) {
+        setAdminAiMessages((current) => [
+          ...current,
+          createAdminAiMessage({
+            body:
+              error instanceof Error
+                ? `Store AI could not read operations context: ${error.message}`
+                : "Store AI could not read operations context right now.",
+            senderRole: "bot",
+          }),
+        ]);
+        setSetupError(null);
+      } else {
+        setMessageDraft(nextMessage);
+        setSetupError(
+          error instanceof Error
+            ? error.message
+            : "Unable to send the message right now.",
+        );
+      }
     } finally {
       setSending(false);
     }
   };
 
   const handleRequestClearHistory = useCallback(() => {
-    if (!activeConversationId || visibleMessages.length === 0 || clearingHistory) {
+    if (
+      (!isAdminAiMode && !activeConversationId) ||
+      visibleMessages.length === 0 ||
+      clearingHistory
+    ) {
       return;
     }
 
     setClearConfirmOpen(true);
-  }, [activeConversationId, clearingHistory, visibleMessages.length]);
+  }, [
+    activeConversationId,
+    clearingHistory,
+    isAdminAiMode,
+    visibleMessages.length,
+  ]);
 
   const handleConfirmClearHistory = useCallback(async () => {
-    if (!activeConversationId || visibleMessages.length === 0 || clearingHistory) {
+    if (
+      (!isAdminAiMode && !activeConversationId) ||
+      visibleMessages.length === 0 ||
+      clearingHistory
+    ) {
       return;
     }
 
@@ -659,6 +817,17 @@ export function SupportChatWidget() {
     setSetupError(null);
 
     try {
+      if (isAdminAiMode) {
+        setAdminAiMessages([]);
+        setMessageDraft("");
+        setClearConfirmOpen(false);
+        return;
+      }
+
+      if (!activeConversationId) {
+        return;
+      }
+
       await clearSupportConversationHistory(
         activeConversationId,
         isAdmin ? undefined : activeCustomerChannel,
@@ -679,6 +848,7 @@ export function SupportChatWidget() {
     activeCustomerChannel,
     clearingHistory,
     isAdmin,
+    isAdminAiMode,
     visibleMessages.length,
   ]);
 
@@ -764,7 +934,9 @@ export function SupportChatWidget() {
           <header className="support-chat__header">
             <div className="support-chat__title-block">
               <span className="support-chat__header-icon">
-                {isAdmin ? (
+                {isAdminAiMode ? (
+                  <Bot className="support-chat__icon" />
+                ) : isAdmin ? (
                   <Headphones className="support-chat__icon" />
                 ) : activeCustomerChannel === "ai" ? (
                   <Bot className="support-chat__icon" />
@@ -776,7 +948,11 @@ export function SupportChatWidget() {
               </span>
               <div>
                 <p className="support-chat__eyebrow">
-                  {isAdmin ? "Support operations" : "Client support"}
+                  {isAdminAiMode
+                    ? "Admin intelligence"
+                    : isAdmin
+                      ? "Support operations"
+                      : "Client support"}
                 </p>
                 <h2>{headerTitle}</h2>
               </div>
@@ -799,8 +975,12 @@ export function SupportChatWidget() {
           {!ready ? (
             <div className="support-chat__loading">Connecting live desk</div>
           ) : (
-            <div className="support-chat__body">
-              {isAdmin ? (
+            <div
+              className={`support-chat__body ${
+                isAdminAiMode ? "support-chat__body--admin-ai" : ""
+              }`}
+            >
+              {isAdmin && !isAdminAiMode ? (
                 <aside className="support-chat__threads" aria-label="Customer conversations">
                   <div className="support-chat__threads-toolbar">
                     <span>
@@ -911,6 +1091,64 @@ export function SupportChatWidget() {
               ) : null}
 
               <div className="support-chat__conversation">
+                {isAdmin ? (
+                  <div
+                    aria-label="Admin chat mode"
+                    className="support-chat__channel-switch support-chat__channel-switch--admin"
+                    role="group"
+                  >
+                    <button
+                      aria-pressed={adminMode === "live"}
+                      className={`support-chat__channel-option ${
+                        adminMode === "live"
+                          ? "support-chat__channel-option--active"
+                          : ""
+                      }`}
+                      onClick={() => {
+                        setSetupError(null);
+                        setAdminMode("live");
+                      }}
+                      type="button"
+                    >
+                      <span className="support-chat__channel-icon">
+                        <Headphones className="support-chat__icon" />
+                      </span>
+                      <span className="support-chat__channel-copy">
+                        <strong>Customer desk</strong>
+                        <small>Realtime support queue</small>
+                      </span>
+                      <em className="support-chat__channel-badge support-chat__channel-badge--online">
+                        Live
+                      </em>
+                    </button>
+
+                    <button
+                      aria-pressed={adminMode === "ai"}
+                      className={`support-chat__channel-option ${
+                        adminMode === "ai"
+                          ? "support-chat__channel-option--active"
+                          : ""
+                      }`}
+                      onClick={() => {
+                        setSetupError(null);
+                        setAdminMode("ai");
+                      }}
+                      type="button"
+                    >
+                      <span className="support-chat__channel-icon">
+                        <Bot className="support-chat__icon" />
+                      </span>
+                      <span className="support-chat__channel-copy">
+                        <strong>Store AI</strong>
+                        <small>Revenue, products, orders</small>
+                      </span>
+                      <em className="support-chat__channel-badge support-chat__channel-badge--online">
+                        Internal
+                      </em>
+                    </button>
+                  </div>
+                ) : null}
+
                 {!isAdmin ? (
                   <div
                     aria-label="Support channel"
@@ -993,20 +1231,23 @@ export function SupportChatWidget() {
                   <span
                     className={`support-chat__status ${
                       isAdmin ||
+                      isAdminAiMode ||
                       activeCustomerChannel === "ai" ||
                       adminPresence.online
                         ? "support-chat__status--online"
                         : ""
                     }`}
                   >
-                    {!isAdmin && activeCustomerChannel === "ai" ? (
+                    {isAdminAiMode ? (
+                      <Bot className="support-chat__status-icon" />
+                    ) : !isAdmin && activeCustomerChannel === "ai" ? (
                       <Bot className="support-chat__status-icon" />
                     ) : isAdmin || adminPresence.online ? (
                       <Wifi className="support-chat__status-icon" />
                     ) : (
                       <WifiOff className="support-chat__status-icon" />
                     )}
-                    {statusLabel}
+                    <span>{statusLabel}</span>
                   </span>
                   <div className="support-chat__status-actions">
                     {activeConversation ? (
@@ -1041,7 +1282,7 @@ export function SupportChatWidget() {
                       className="support-chat__clear"
                       disabled={
                         clearingHistory ||
-                        !activeConversationId ||
+                        (!isAdminAiMode && !activeConversationId) ||
                         visibleMessages.length === 0
                       }
                       onClick={handleRequestClearHistory}
@@ -1108,11 +1349,15 @@ export function SupportChatWidget() {
                         <p className="support-chat__eyebrow">Conversation history</p>
                         <h3 id="support-chat-clear-title">Clear chat history?</h3>
                         <p id="support-chat-clear-description">
-                          {isAdmin
+                          {isAdminAiMode
+                            ? "This removes only the local Store AI thread in this browser."
+                            : isAdmin
                             ? "This removes every message in the selected conversation."
                             : "This removes messages in the current support channel."}
                           {" "}
-                          The conversation stays available for new support notes.
+                          {isAdminAiMode
+                            ? "Live customer conversations are not changed."
+                            : "The conversation stays available for new support notes."}
                         </p>
                       </div>
                       <div className="support-chat__modal-actions">
@@ -1143,6 +1388,7 @@ export function SupportChatWidget() {
                   {visibleMessages.length === 0 ? (
                     <EmptyMessages
                       channel={activeCustomerChannel}
+                      isAdminAi={isAdminAiMode}
                       isAdmin={isAdmin}
                     />
                   ) : (
@@ -1156,7 +1402,19 @@ export function SupportChatWidget() {
                   )}
                 </div>
 
-                {!isAdmin && activeCustomerChannel === "ai" ? (
+                {isAdminAiMode ? (
+                  <div className="support-chat__quick-row">
+                    {ADMIN_AI_QUICK_PROMPTS.map((prompt) => (
+                      <button
+                        key={prompt}
+                        onClick={() => setMessageDraft(prompt)}
+                        type="button"
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
+                ) : !isAdmin && activeCustomerChannel === "ai" ? (
                   <div className="support-chat__quick-row">
                     {QUICK_PROMPTS.map((prompt) => (
                       <button
@@ -1176,13 +1434,15 @@ export function SupportChatWidget() {
                     <textarea
                       disabled={
                         sending ||
-                        (isAdmin && !activeConversationId) ||
+                        (isAdmin && !isAdminAiMode && !activeConversationId) ||
                         isCustomerAdminChannelLocked
                       }
                       onChange={(event) => setMessageDraft(event.target.value)}
                       placeholder={
                         isAdmin
-                          ? "Reply to the selected customer"
+                          ? isAdminAiMode
+                            ? "Ask Store AI about revenue, stock, orders"
+                            : "Reply to the selected customer"
                           : activeCustomerChannel === "admin"
                             ? "Message the admin desk"
                             : "Ask the AI concierge"
@@ -1197,7 +1457,7 @@ export function SupportChatWidget() {
                     disabled={
                       sending ||
                       !messageDraft.trim() ||
-                      (isAdmin && !activeConversationId) ||
+                      (isAdmin && !isAdminAiMode && !activeConversationId) ||
                       isCustomerAdminChannelLocked
                     }
                     title="Send"

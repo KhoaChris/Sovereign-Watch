@@ -696,7 +696,131 @@
   }
 }
 
+@media (min-width: 720px) and (max-width: 979px) {
+  .site-header__drawer {
+    align-content: start;
+    grid-auto-rows: max-content;
+    gap: 0.9rem;
+    width: min(calc(100% - 2rem), 34rem);
+    height: auto;
+    max-height: calc(100svh - 2rem);
+    margin: 1rem;
+    padding: 1.15rem 1.1rem calc(1.1rem + env(safe-area-inset-bottom));
+    border-radius: 1.55rem;
+  }
+
+  .site-header__drawer-head {
+    align-items: center;
+  }
+
+  .site-header__drawer-link {
+    min-height: 4.75rem;
+    align-items: center;
+  }
+
+  .site-header__drawer-nav {
+    gap: 0.55rem;
+  }
+
+  .site-header__drawer-footer {
+    margin-top: 0.6rem;
+  }
+}
+
 @media (max-width: 540px) {
+  .site-header__inner {
+    min-height: 4.4rem;
+    padding: 0.7rem 0.7rem;
+  }
+
+  .site-header__left,
+  .site-header__right {
+    gap: 0.45rem;
+  }
+
+  .site-header__brand-block {
+    max-width: calc(100% - 8.8rem);
+  }
+
+  .site-header__brand-lockup {
+    gap: 0.42rem;
+  }
+
+  .site-header__brand-mark-frame {
+    width: 1.55rem;
+    height: 1.55rem;
+  }
+
+  .site-header__brand {
+    font-size: 0.78rem;
+    letter-spacing: 0.2em;
+  }
+
+  .site-header__icon-row {
+    gap: 0.32rem;
+  }
+
+  .site-header__icon-button,
+  .site-header__menu-button {
+    width: 2.42rem;
+    height: 2.42rem;
+  }
+
+  .site-header__icon,
+  .site-header__menu-icon {
+    width: 0.9rem;
+    height: 0.9rem;
+  }
+
+  .site-header__icon-badge {
+    top: -0.18rem;
+    right: -0.04rem;
+  }
+
+  .site-header__drawer {
+    align-content: start;
+    grid-auto-rows: max-content;
+    gap: 0.78rem;
+    width: min(calc(100% - 0.7rem), 23rem);
+    height: auto;
+    max-height: calc(100svh - 0.7rem);
+    margin: 0.35rem;
+    padding: 0.9rem 0.85rem calc(0.85rem + env(safe-area-inset-bottom));
+    border-radius: 1.45rem;
+  }
+
+  .site-header__drawer-head {
+    align-items: center;
+  }
+
+  .site-header__drawer-brand {
+    gap: 0.65rem;
+  }
+
+  .site-header__drawer-brand-mark {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .site-header__drawer-close {
+    width: 2.3rem;
+    height: 2.3rem;
+  }
+
+  .site-header__drawer-pills {
+    gap: 0.42rem;
+  }
+
+  .site-header__drawer-pill {
+    padding: 0.38rem 0.58rem;
+    font-size: 0.58rem;
+    letter-spacing: 0.2em;
+  }
+
+  .site-header__drawer-section {
+    gap: 0.55rem;
+  }
+
   .site-header__drawer-title {
     font-size: 1.5rem;
   }
@@ -712,6 +836,11 @@
 
   .site-header__drawer-link-caption {
     font-size: 0.74rem;
+  }
+
+  .site-header__drawer-footer {
+    margin-top: 0.25rem;
+    padding-top: 0.78rem;
   }
 }
 

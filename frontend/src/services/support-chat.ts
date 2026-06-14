@@ -25,8 +25,13 @@ import {
 import { getFirebaseClientDb } from "./firebase-client";
 import { storefrontApi } from "./api";
 import type {
+  AiConciergeMemoryMessage,
   AuthUserProfile,
+  CartItemRecord,
+  CartRecord,
+  FavoriteRecord,
   ProductRecord,
+  ProductVariant,
   SupportChatChannel,
   SupportChatMessage,
   SupportChatProductSuggestion,
@@ -64,6 +69,8 @@ interface SendAdminMessageInput {
 
 interface BotReply {
   body: string;
+  cart?: CartRecord;
+  favorites?: FavoriteRecord;
   suggestions: SupportChatProductSuggestion[];
 }
 
@@ -85,6 +92,8 @@ const MESSAGE_MAX_LENGTH = 1_000;
 const MESSAGE_RATE_LIMIT_MAX = 4;
 const MESSAGE_RATE_LIMIT_WINDOW_MS = 15_000;
 const MESSAGES_COLLECTION = "messages";
+export const SUPPORT_CHAT_CART_UPDATED_EVENT = "watchroom:cart-updated";
+export const SUPPORT_CHAT_FAVORITES_UPDATED_EVENT = "watchroom:favorites-updated";
 const senderMessageWindows = new Map<string, number[]>();
 
 const BLOCKED_CONTENT_PATTERNS = [
@@ -114,7 +123,23 @@ const PRODUCT_KEYWORDS = [
   "tìm",
   "watch",
 ];
-const PRICE_KEYWORDS = ["bao gia", "báo giá", "bao nhiêu", "cost", "gia", "giá", "price"];
+const PRICE_KEYWORDS = [
+  "bao gia",
+  "báo giá",
+  "bao nhiêu",
+  "below",
+  "budget",
+  "cost",
+  "duoi",
+  "dưới",
+  "gia",
+  "giá",
+  "less than",
+  "max",
+  "price",
+  "under",
+  "up to",
+];
 const SHIPPING_KEYWORDS = [
   "delivery",
   "giao",
@@ -205,8 +230,83 @@ const COLLECTOR_WATCH_KEYWORDS = [
   "suu tam",
   "sưu tầm",
 ];
+const RECOMMENDATION_KEYWORDS = [
+  "advise",
+  "best option",
+  "best piece",
+  "best watch",
+  "de xuat",
+  "đề xuất",
+  "goi y",
+  "gợi ý",
+  "help me choose",
+  "nen chon",
+  "nên chọn",
+  "nen mua",
+  "nên mua",
+  "pick for me",
+  "recommendation",
+  "recommended",
+  "recommend",
+  "suggested",
+  "suggestion",
+  "suggest",
+  "tu van chon",
+  "tư vấn chọn",
+  "what should i buy",
+  "what should i choose",
+  "which should i pick",
+  "which watch",
+  "which one",
+];
+const DIRECT_CART_ADD_KEYWORDS = [
+  "add",
+  "add to cart",
+  "put in cart",
+  "reserve this",
+  "reserve watch",
+  "stage",
+  "stage this",
+  "them",
+  "thêm",
+  "them vao gio",
+  "thêm vào giỏ",
+  "them vao gio hang",
+  "thêm vào giỏ hàng",
+];
+const FAVORITE_KEYWORDS = [
+  "add to favorite",
+  "add to favorites",
+  "favourite",
+  "favourites",
+  "favorite",
+  "favorites",
+  "heart",
+  "luu yeu thich",
+  "lưu yêu thích",
+  "save",
+  "save this",
+  "saved reference",
+  "saved references",
+  "wishlist",
+  "yeu thich",
+  "yêu thích",
+];
+const REMOVE_KEYWORDS = [
+  "clear",
+  "delete",
+  "empty",
+  "remove",
+  "remove all",
+  "wipe",
+  "xoa",
+  "xoá",
+  "xoa het",
+  "xoá hết",
+];
 
 const SEARCH_STOP_WORDS = [
+  "advise",
   "available",
   "bao",
   "bao gia",
@@ -214,34 +314,81 @@ const SEARCH_STOP_WORDS = [
   "báo",
   "báo giá",
   "bao nhiêu",
+  "best option",
+  "best piece",
+  "best watch",
+  "best",
   "cho",
+  "clear",
   "co",
   "có",
   "cost",
+  "delete",
   "dong ho",
   "đồng hồ",
+  "empty",
   "find",
   "gia",
   "giá",
+  "favorite",
+  "favorites",
+  "favourite",
+  "favourites",
   "giup",
   "giúp",
+  "goi y",
+  "gợi ý",
+  "help me choose",
   "kiem",
   "kiếm",
   "mau",
   "mẫu",
   "minh",
   "mình",
+  "nen chon",
+  "nên chọn",
+  "nen mua",
+  "nên mua",
+  "pick for me",
+  "pick",
   "price",
   "product",
+  "recommendation",
+  "recommended",
+  "recommend",
   "reference",
+  "remove",
+  "remove all",
+  "saved",
+  "saved piece",
+  "saved pieces",
+  "saved reference",
+  "saved references",
   "search",
   "san pham",
   "sản phẩm",
+  "suggested",
+  "suggestion",
+  "suggest",
   "tim",
   "tìm",
   "toi",
   "tôi",
+  "tu van chon",
+  "tư vấn chọn",
+  "tu van",
+  "tư vấn",
   "watch",
+  "what should i buy",
+  "what should i choose",
+  "which should i pick",
+  "which watch",
+  "which one",
+  "wipe",
+  "xoa",
+  "xoá",
+  "xoa het",
+  "xoá hết",
   "xin",
 ];
 
@@ -518,6 +665,665 @@ function pageSuggestion({
   };
 }
 
+function cartPageSuggestion(): SupportChatProductSuggestion {
+  return pageSuggestion({
+    href: "/cart",
+    name: "Reserve Cart",
+    priceLabel: "Review checkout",
+    productId: "cart",
+  });
+}
+
+function favoritePageSuggestion(): SupportChatProductSuggestion {
+  return pageSuggestion({
+    href: "/favorites",
+    name: "Favorites",
+    priceLabel: "Saved references",
+    productId: "favorites",
+  });
+}
+
+function getMemoryProductSuggestions(
+  memory: AiConciergeMemoryMessage[],
+): SupportChatProductSuggestion[] {
+  const seenProductIds = new Set<string>();
+  const suggestions: SupportChatProductSuggestion[] = [];
+
+  for (const message of [...memory].reverse()) {
+    for (const suggestion of message.suggestions ?? []) {
+      const isProductSuggestion = suggestion.href.startsWith("/collection/");
+
+      if (!isProductSuggestion || seenProductIds.has(suggestion.productId)) {
+        continue;
+      }
+
+      seenProductIds.add(suggestion.productId);
+      suggestions.push(suggestion);
+    }
+  }
+
+  return suggestions;
+}
+
+function getReferencedMemorySuggestion(
+  body: string,
+  memory: AiConciergeMemoryMessage[],
+): SupportChatProductSuggestion | null {
+  const suggestions = getMemoryProductSuggestions(memory);
+  const normalized = normalizeForSearch(body);
+
+  if (suggestions.length === 0) {
+    return null;
+  }
+
+  const ordinalIndex =
+    /\b(?:third|3rd|option 3|option three|number 3|number three)\b/.test(normalized)
+      ? 2
+      : /\b(?:second|2nd|option 2|option two|number 2|number two)\b/.test(normalized)
+        ? 1
+        : /\b(?:first|1st|option 1|option one|number 1|number one)\b/.test(normalized)
+          ? 0
+          : null;
+
+  if (ordinalIndex !== null) {
+    return suggestions[ordinalIndex] ?? null;
+  }
+
+  if (/\b(?:it|that|this|that one|this one|same one|same watch)\b/.test(normalized)) {
+    return suggestions[0] ?? null;
+  }
+
+  return null;
+}
+
+function isFavoritesToCartRequest(body: string): boolean {
+  const normalized = normalizeForSearch(body);
+  const hasFavoriteSignal = includesAnyKeyword(body, FAVORITE_KEYWORDS);
+  const hasCartSignal = /\b(?:cart|checkout|gio hang|reserve|stage)\b/.test(normalized);
+  const hasMoveSignal =
+    /\b(?:add|move|pull|put|reserve|stage|them|thêm|chuyen|chuyển|bring)\b/.test(normalized);
+
+  return hasFavoriteSignal && hasCartSignal && hasMoveSignal;
+}
+
+function isFavoriteSaveRequest(body: string): boolean {
+  if (isFavoritesToCartRequest(body)) {
+    return false;
+  }
+
+  const normalized = normalizeForSearch(body);
+
+  return (
+    includesAnyKeyword(body, FAVORITE_KEYWORDS) ||
+    /\b(?:save|heart|favorite|favourite|wishlist|luu|yeu thich)\b/.test(normalized)
+  );
+}
+
+function isDirectCartAddRequest(body: string): boolean {
+  const normalized = normalizeForSearch(body);
+
+  if (/\b(?:build|prepare|recommend|suggest|goi y|de xuat|tu van)\b/.test(normalized)) {
+    return false;
+  }
+
+  if (/\breserve cart\b/.test(normalized)) {
+    return false;
+  }
+
+  return (
+    includesAnyKeyword(body, DIRECT_CART_ADD_KEYWORDS) ||
+    /\b(?:put|stage|reserve)\s+(?:the\s+)?(?:first|second|third|option|number|this|that|it)\b/.test(
+      normalized,
+    )
+  );
+}
+
+function extractCartQuantity(body: string): number {
+  const normalized = normalizeForSearch(body);
+  const explicitMatch =
+    normalized.match(/\b(?:qty|quantity|so luong|x)\s*(\d{1,2})\b/) ??
+    normalized.match(/\b(\d{1,2})\s*(?:pcs|pieces|piece|cai|chiec)\b/);
+  const quantity = explicitMatch ? Number(explicitMatch[1]) : 1;
+
+  return Number.isInteger(quantity) && quantity > 0 ? Math.min(quantity, 9) : 1;
+}
+
+function getVariantPrice(variant: ProductVariant): number {
+  return variant.discountPrice ?? variant.price;
+}
+
+function selectCartVariant(product: ProductRecord, intent: ConciergeIntent): ProductVariant | null {
+  const availableVariants = product.variants.filter((variant) => variant.stockQuantity > 0);
+  const sizeMatchedVariants = intent.size
+    ? availableVariants.filter(
+        (variant) => normalizeForSearch(variant.size) === normalizeForSearch(intent.size ?? ""),
+      )
+    : availableVariants;
+  const candidates = sizeMatchedVariants.length > 0 ? sizeMatchedVariants : availableVariants;
+  const [bestVariant] = [...candidates].sort(
+    (left, right) => getVariantPrice(left) - getVariantPrice(right),
+  );
+
+  return bestVariant ?? null;
+}
+
+function getFavoriteProducts(favorites: FavoriteRecord): ProductRecord[] {
+  return favorites.items
+    .map((item) => item.product)
+    .filter((product): product is ProductRecord => Boolean(product));
+}
+
+function productMatchesMessage(product: ProductRecord, body: string): boolean {
+  const searchTerm = extractSearchTerm(body);
+  const tokens = searchTerm
+    .split(/\s+/)
+    .filter((token) => token.length >= 3);
+
+  if (tokens.length === 0) {
+    return false;
+  }
+
+  const haystack = normalizeForSearch(
+    `${product.name} ${product.type} ${product.brandId} ${product.categoryId}`,
+  );
+
+  return tokens.every((token) => haystack.includes(token));
+}
+
+function getFavoriteOrdinalIndex(body: string): number | null {
+  const normalized = normalizeForSearch(body);
+
+  if (/\b(?:third|3rd|option 3|option three|number 3|number three)\b/.test(normalized)) {
+    return 2;
+  }
+
+  if (/\b(?:second|2nd|option 2|option two|number 2|number two)\b/.test(normalized)) {
+    return 1;
+  }
+
+  if (/\b(?:first|1st|option 1|option one|number 1|number one)\b/.test(normalized)) {
+    return 0;
+  }
+
+  return null;
+}
+
+function getTargetFavoriteProducts(
+  body: string,
+  favorites: FavoriteRecord,
+): ProductRecord[] {
+  const products = getFavoriteProducts(favorites);
+  const ordinalIndex = getFavoriteOrdinalIndex(body);
+
+  if (ordinalIndex !== null) {
+    const product = products[ordinalIndex];
+    return product ? [product] : [];
+  }
+
+  const filteredProducts = products.filter((product) => productMatchesMessage(product, body));
+
+  return filteredProducts.length > 0 ? filteredProducts : products;
+}
+
+function isRemovalRequest(body: string): boolean {
+  return includesAnyKeyword(body, REMOVE_KEYWORDS);
+}
+
+function hasCartScope(body: string): boolean {
+  const normalized = normalizeForSearch(body);
+
+  return /\b(?:cart|checkout|gio hang|reserve cart|bag)\b/.test(normalized);
+}
+
+function hasFavoriteScope(body: string): boolean {
+  return includesAnyKeyword(body, FAVORITE_KEYWORDS);
+}
+
+function isClearAllRequest(body: string): boolean {
+  const normalized = normalizeForSearch(body);
+
+  return /\b(?:all|clear|empty|everything|wipe|xoa het|remove all|delete all)\b/.test(normalized);
+}
+
+function joinsCartAndFavorites(body: string): boolean {
+  return /\b(?:and|va|và)\b|&|\+/.test(normalizeForSearch(body));
+}
+
+function getStrictTargetFavoriteProducts(
+  body: string,
+  favorites: FavoriteRecord,
+  memory: AiConciergeMemoryMessage[],
+): ProductRecord[] {
+  const products = getFavoriteProducts(favorites);
+  const referencedSuggestion = getReferencedMemorySuggestion(body, memory);
+
+  if (referencedSuggestion) {
+    return products.filter((product) => product.id === referencedSuggestion.productId);
+  }
+
+  const ordinalIndex = getFavoriteOrdinalIndex(body);
+
+  if (ordinalIndex !== null) {
+    const product = products[ordinalIndex];
+    return product ? [product] : [];
+  }
+
+  return products.filter((product) => productMatchesMessage(product, body));
+}
+
+function cartItemMatchesMessage(item: CartItemRecord, body: string): boolean {
+  const searchTerm = extractSearchTerm(body);
+  const tokens = searchTerm
+    .split(/\s+/)
+    .filter((token) => token.length >= 3);
+
+  if (tokens.length === 0) {
+    return false;
+  }
+
+  const haystack = normalizeForSearch(
+    `${item.productName} ${item.productType} ${item.variantColor} ${item.variantSize}`,
+  );
+
+  return tokens.every((token) => haystack.includes(token));
+}
+
+function getTargetCartItems(
+  body: string,
+  items: CartItemRecord[],
+  memory: AiConciergeMemoryMessage[],
+): CartItemRecord[] {
+  const referencedSuggestion = getReferencedMemorySuggestion(body, memory);
+
+  if (referencedSuggestion) {
+    return items.filter((item) => item.productId === referencedSuggestion.productId);
+  }
+
+  const ordinalIndex = getFavoriteOrdinalIndex(body);
+
+  if (ordinalIndex !== null) {
+    const item = items[ordinalIndex];
+    return item ? [item] : [];
+  }
+
+  return items.filter((item) => cartItemMatchesMessage(item, body));
+}
+
+async function buildRemovalFallbackReply(
+  body: string,
+  memory: AiConciergeMemoryMessage[],
+): Promise<BotReply | null> {
+  if (!isRemovalRequest(body)) {
+    return null;
+  }
+
+  try {
+    const hasCart = hasCartScope(body);
+    const hasFavorites = hasFavoriteScope(body);
+    const clearAll = isClearAllRequest(body);
+    const shouldClearBoth = hasCart && hasFavorites && joinsCartAndFavorites(body);
+    const clearCart = hasCart && clearAll;
+    const clearFavorites = hasFavorites && clearAll && (!hasCart || shouldClearBoth);
+
+    if (clearCart || clearFavorites) {
+      const cart = clearCart ? await storefrontApi.clearCart() : undefined;
+      const favorites = clearFavorites ? await storefrontApi.clearFavorites() : undefined;
+      const clearedTargets = [
+        clearCart ? "reserve cart" : null,
+        clearFavorites ? "Favorites desk" : null,
+      ].filter(Boolean);
+
+      return {
+        body: `Cleared your ${clearedTargets.join(" and ")}. ${clearCart ? "The reserve cart is now empty." : ""} ${clearFavorites ? "Favorites now has no saved references." : ""}`.trim(),
+        cart,
+        favorites,
+        suggestions: [
+          ...(clearCart ? [cartPageSuggestion()] : []),
+          ...(clearFavorites ? [favoritePageSuggestion()] : []),
+        ],
+      };
+    }
+
+    if (hasCartScope(body)) {
+      const cartRecord = await storefrontApi.getCart();
+
+      if (cartRecord.items.length === 0) {
+        return {
+          body: "Your reserve cart is already empty. There is no cart piece to remove.",
+          cart: cartRecord,
+          suggestions: [cartPageSuggestion()],
+        };
+      }
+
+      const targetItems = getTargetCartItems(body, cartRecord.items, memory);
+
+      if (targetItems.length === 0) {
+        return {
+          body: "I could not safely match which cart piece to remove. Use the product name, variant detail, or say \"remove first item from cart\". Say \"empty cart\" if you want to clear everything.",
+          cart: cartRecord,
+          suggestions: [cartPageSuggestion()],
+        };
+      }
+
+      let nextCart = cartRecord;
+
+      for (const item of targetItems) {
+        nextCart = await storefrontApi.removeCartItem(item.id);
+      }
+
+      return {
+        body: `Removed ${targetItems.length} cart piece${targetItems.length === 1 ? "" : "s"}: ${targetItems.map((item) => `${item.productName} / ${item.variantSize} / ${item.variantColor}`).join("; ")}. Open the cart to review the remaining reserve items.`,
+        cart: nextCart,
+        suggestions: [cartPageSuggestion()],
+      };
+    }
+
+    if (hasFavoriteScope(body)) {
+      const favorites = await storefrontApi.getFavorites();
+
+      if (favorites.count === 0 || getFavoriteProducts(favorites).length === 0) {
+        return {
+          body: "Your Favorites desk is already empty. There is no saved reference to remove.",
+          favorites,
+          suggestions: [favoritePageSuggestion()],
+        };
+      }
+
+      const targetProducts = getStrictTargetFavoriteProducts(body, favorites, memory);
+
+      if (targetProducts.length === 0) {
+        return {
+          body: "I could not safely match which favorite to remove. Use the model name, or say \"remove first favorite\". Say \"empty favorites\" if you want to clear every saved reference.",
+          favorites,
+          suggestions: [
+            favoritePageSuggestion(),
+            ...getFavoriteProducts(favorites).slice(0, 3).map(productToSuggestion),
+          ].slice(0, 4),
+        };
+      }
+
+      let nextFavorites = favorites;
+
+      for (const product of targetProducts) {
+        nextFavorites = await storefrontApi.removeFavorite(product.id);
+      }
+
+      return {
+        body: `Removed ${targetProducts.length} saved reference${targetProducts.length === 1 ? "" : "s"} from Favorites: ${targetProducts.map((product) => product.name).join("; ")}.`,
+        favorites: nextFavorites,
+        suggestions: [
+          favoritePageSuggestion(),
+          ...targetProducts.slice(0, 3).map(productToSuggestion),
+        ].slice(0, 4),
+      };
+    }
+
+    return {
+      body: "I can remove pieces from the reserve cart or Favorites, but I need the destination to be explicit before deleting anything. Try \"remove Daytona from cart\", \"remove first favorite\", \"empty cart\", or \"empty favorites\".",
+      suggestions: [
+        cartPageSuggestion(),
+        favoritePageSuggestion(),
+      ],
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function buildFavoriteToCartReply(body: string): Promise<BotReply | null> {
+  if (!isFavoritesToCartRequest(body)) {
+    return null;
+  }
+
+  const favorites = await storefrontApi.getFavorites();
+  const favoriteProducts = getFavoriteProducts(favorites);
+  const targetProducts = getTargetFavoriteProducts(body, favorites);
+
+  if (favoriteProducts.length === 0) {
+    return {
+      body: "Your Favorites desk is empty right now. Save a reference first, then I can stage saved pieces into the reserve cart.",
+      favorites,
+      suggestions: [
+        favoritePageSuggestion(),
+        pageSuggestion({
+          href: "/collection",
+          name: "Collection",
+          priceLabel: "Browse watches",
+          productId: "collection",
+        }),
+      ],
+    };
+  }
+
+  if (targetProducts.length === 0) {
+    return {
+      body: "I could not match that saved reference. Use an exact model name, or say \"add all favorites to cart\" to stage every saved piece that has an in-stock variant.",
+      favorites,
+      suggestions: [
+        favoritePageSuggestion(),
+        ...favoriteProducts.slice(0, 3).map(productToSuggestion),
+      ].slice(0, 4),
+    };
+  }
+
+  const intent = buildConciergeIntent(body);
+  const quantity = extractCartQuantity(body);
+  const addedLines: string[] = [];
+  const skippedLines: string[] = [];
+  let cart: CartRecord | undefined;
+
+  for (const product of targetProducts) {
+    const variant = selectCartVariant(product, intent);
+
+    if (!variant) {
+      skippedLines.push(`${product.name} (no matching in-stock variant)`);
+      continue;
+    }
+
+    try {
+      cart = await storefrontApi.addCartItem({
+        productVariantId: variant.id,
+        quantity,
+      });
+      addedLines.push(`${product.name} / ${variant.size} / ${variant.color}`);
+    } catch (error) {
+      skippedLines.push(
+        `${product.name} (${error instanceof Error ? error.message : "cart update failed"})`,
+      );
+    }
+  }
+
+  if (!cart || addedLines.length === 0) {
+    return {
+      body: `I found your saved references, but none could be staged into the reserve cart. ${skippedLines.length > 0 ? `Blocked: ${skippedLines.join("; ")}.` : "Try choosing a different saved piece or removing strict size/budget filters."}`,
+      favorites,
+      suggestions: [
+        favoritePageSuggestion(),
+        cartPageSuggestion(),
+        ...targetProducts.slice(0, 2).map(productToSuggestion),
+      ].slice(0, 4),
+    };
+  }
+
+  return {
+    body: `Staged ${addedLines.length} saved reference${addedLines.length === 1 ? "" : "s"} from Favorites into your reserve cart: ${addedLines.join("; ")}. ${skippedLines.length > 0 ? `Skipped: ${skippedLines.join("; ")}.` : "Everything matched an in-stock variant."} Open the cart to review quantities, delivery details, and payment before checkout.`,
+    cart,
+    favorites,
+    suggestions: [
+      cartPageSuggestion(),
+      favoritePageSuggestion(),
+      ...targetProducts.slice(0, 2).map(productToSuggestion),
+    ].slice(0, 4),
+  };
+}
+
+async function buildMemoryFavoriteAddReply(
+  body: string,
+  memory: AiConciergeMemoryMessage[],
+): Promise<BotReply | null> {
+  if (!isFavoriteSaveRequest(body)) {
+    return null;
+  }
+
+  const suggestion = getReferencedMemorySuggestion(body, memory);
+
+  if (!suggestion) {
+    return null;
+  }
+
+  let product: ProductRecord;
+
+  try {
+    product = await storefrontApi.getProduct(suggestion.productId);
+  } catch {
+    return null;
+  }
+
+  const favorites = await storefrontApi.addFavorite(product.id);
+
+  return {
+    body: `${product.name} is saved to your Favorites desk. You can keep comparing pieces from there, or say "add favorites to cart" when you want me to stage saved references for checkout.`,
+    favorites,
+    suggestions: [
+      favoritePageSuggestion(),
+      productToSuggestion(product),
+      cartPageSuggestion(),
+    ],
+  };
+}
+
+async function buildFavoriteFallbackReply(
+  body: string,
+  memory: AiConciergeMemoryMessage[],
+): Promise<BotReply | null> {
+  try {
+    const favoriteCartReply = await buildFavoriteToCartReply(body);
+
+    if (favoriteCartReply) {
+      return favoriteCartReply;
+    }
+
+    return buildMemoryFavoriteAddReply(body, memory);
+  } catch {
+    return null;
+  }
+}
+
+async function buildMemoryCartAddReply(
+  body: string,
+  memory: AiConciergeMemoryMessage[],
+): Promise<BotReply | null> {
+  if (!isDirectCartAddRequest(body)) {
+    return null;
+  }
+
+  const suggestion = getReferencedMemorySuggestion(body, memory);
+
+  if (!suggestion) {
+    return null;
+  }
+
+  let product: ProductRecord;
+
+  try {
+    product = await storefrontApi.getProduct(suggestion.productId);
+  } catch {
+    return null;
+  }
+
+  const intent = buildConciergeIntent(body);
+  const variant = selectCartVariant(product, intent);
+
+  if (!variant) {
+    return {
+      body: `I matched ${suggestion.name} from the previous shortlist, but I could not find an in-stock variant that fits this exact request. Send a case size or open the product card to choose a variant manually.`,
+      suggestions: [
+        suggestion,
+        cartPageSuggestion(),
+      ],
+    };
+  }
+
+  const quantity = extractCartQuantity(body);
+
+  try {
+    const cart = await storefrontApi.addCartItem({
+      productVariantId: variant.id,
+      quantity,
+    });
+
+    return {
+      body: `Added ${quantity} x ${product.name} (${variant.size}, ${variant.color}) to your reserve cart at ${formatPrice(getVariantPrice(variant))} each. Open the cart to review checkout details, payment method, and delivery address before creating the order.`,
+      cart,
+      suggestions: [
+        cartPageSuggestion(),
+        productToSuggestion(product),
+      ],
+    };
+  } catch (error) {
+    return {
+      body: `I matched ${product.name}, but I could not update the reserve cart because ${error instanceof Error ? error.message : "the cart update failed"}. You can still open the product page and reserve it manually, or send a different quantity.`,
+      suggestions: [
+        productToSuggestion(product),
+        cartPageSuggestion(),
+      ],
+    };
+  }
+}
+
+function isMemoryRefinement(
+  body: string,
+  memory: AiConciergeMemoryMessage[],
+): boolean {
+  if (getMemoryProductSuggestions(memory).length === 0) {
+    return false;
+  }
+
+  return (
+    includesAnyKeyword(body, PRICE_KEYWORDS) ||
+    findFirstMoneyValue(normalizeForSearch(body)) !== null ||
+    includesAnyKeyword(body, SIZE_KEYWORDS) ||
+    includesAnyKeyword(body, AVAILABLE_ONLY_KEYWORDS) ||
+    includesAnyKeyword(body, DRESS_WATCH_KEYWORDS) ||
+    includesAnyKeyword(body, DAILY_WATCH_KEYWORDS) ||
+    includesAnyKeyword(body, SPORT_WATCH_KEYWORDS) ||
+    includesAnyKeyword(body, COLLECTOR_WATCH_KEYWORDS)
+  );
+}
+
+function buildMemoryFallbackReply(
+  body: string,
+  memory: AiConciergeMemoryMessage[],
+): BotReply | null {
+  if (!isMemoryRefinement(body, memory)) {
+    return null;
+  }
+
+  const intent = buildConciergeIntent(body);
+  const previousSuggestions = getMemoryProductSuggestions(memory);
+  const budgetMax = intent.budgetMax;
+  const filteredSuggestions = budgetMax
+    ? previousSuggestions.filter((suggestion) => {
+        const price = findFirstMoneyValue(suggestion.priceLabel);
+        return price === null || price <= budgetMax;
+      })
+    : previousSuggestions;
+  const suggestions = filteredSuggestions.length > 0
+    ? filteredSuggestions.slice(0, 3)
+    : previousSuggestions.slice(0, 3);
+  const brief = buildConciergeQueryLabel(intent, "the previous shortlist");
+  const firstPick = suggestions[0];
+
+  if (!firstPick) {
+    return null;
+  }
+
+  return {
+    body: `Concierge recommendation: I narrowed the previous shortlist for ${brief}. First pick: ${firstPick.name}. ${suggestions.length > 1 ? "I kept the closest matching options attached below." : "That is the closest matching option from the previous list."} Send a case size, use case, or "add first one to cart" when you want the next step.`,
+    suggestions,
+  };
+}
+
 function getProductPriceRange(products: ProductRecord[]): string {
   const prices = products
     .map(getLowestProductPrice)
@@ -590,26 +1396,67 @@ function extractSearchTerm(body: string): string {
     .trim();
 }
 
+function normalizeMoneyAmount(rawAmount: string): string {
+  const compact = rawAmount
+    .toLowerCase()
+    .replace(/\b(?:usd|dollars?)\b/g, "")
+    .replace(/\$/g, "")
+    .replace(/\s+/g, "")
+    .trim();
+
+  if (/^\d{1,3}([,.]\d{3})+$/.test(compact)) {
+    return compact.replace(/[,.]/g, "");
+  }
+
+  return compact.replace(/,/g, "");
+}
+
 function parseMoneyAmount(rawAmount: string, suffix = ""): number | null {
-  const cleaned = rawAmount.replace(/,/g, "").trim();
-  const amount = Number(cleaned);
+  const scale = `${rawAmount} ${suffix}`;
+  const amount = Number(normalizeMoneyAmount(rawAmount));
 
   if (!Number.isFinite(amount) || amount <= 0) {
     return null;
   }
 
-  if (/k|thousand/i.test(suffix) || amount < 1_000) {
+  if (/k|thousand|nghin|ngan/i.test(scale) || amount < 1_000) {
     return Math.round(amount * 1_000);
   }
 
   return Math.round(amount);
 }
 
+function findFirstMoneyValue(text: string): number | null {
+  const moneyPattern =
+    /(?:usd|\$)?\s*(\d+(?:[,.]\d{3})*|\d+(?:[,.]\d+)?)\s*(k|thousand|nghin|ngan)?\s*(usd|\$)?/gi;
+
+  for (const match of text.matchAll(moneyPattern)) {
+    const fullMatch = match[0] ?? "";
+    const rawAmount = match[1] ?? "";
+    const suffix = match[2] ?? "";
+    const trailingCurrency = match[3] ?? "";
+    const nextText = text.slice((match.index ?? 0) + fullMatch.length, (match.index ?? 0) + fullMatch.length + 4);
+    const hasMoneySignal = Boolean(suffix || trailingCurrency || /\$|usd/i.test(fullMatch));
+
+    if (!hasMoneySignal || /^\s*mm\b/i.test(nextText)) {
+      continue;
+    }
+
+    const value = parseMoneyAmount(rawAmount, suffix);
+
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
 function extractBudgetIntent(body: string): Pick<ConciergeIntent, "budgetMax" | "budgetMin"> {
   const text = normalizeForSearch(body);
-  const amountPattern = "(\\d+(?:[,.]\\d{3})*|\\d+(?:\\.\\d+)?)\\s*(k|thousand)?";
+  const amountPattern = "(\\d+(?:[,.]\\d{3})*|\\d+(?:[,.]\\d+)?)\\s*(k|thousand|nghin|ngan)?\\s*(?:usd|\\$)?";
   const rangeMatch = text.match(
-    new RegExp(`(?:between|from|tu|từ)\\s+${amountPattern}\\s*(?:-|to|and|den|đến)\\s*${amountPattern}(?!\\s*mm)`, "i"),
+    new RegExp(`(?:between|from|tu|từ)\\s+(?:usd|\\$)?\\s*${amountPattern}\\s*(?:-|to|and|den|đến)\\s*(?:usd|\\$)?\\s*${amountPattern}(?!\\s*mm)`, "i"),
   );
 
   if (rangeMatch) {
@@ -632,9 +1479,10 @@ function extractBudgetIntent(body: string): Pick<ConciergeIntent, "budgetMax" | 
   );
   const budgetMax = maxMatch ? parseMoneyAmount(maxMatch[1], maxMatch[2]) : null;
   const budgetMin = minMatch ? parseMoneyAmount(minMatch[1], minMatch[2]) : null;
+  const standaloneBudget = !budgetMax && !budgetMin ? findFirstMoneyValue(text) : null;
 
   return {
-    ...(budgetMax ? { budgetMax } : {}),
+    ...(budgetMax ?? standaloneBudget ? { budgetMax: budgetMax ?? standaloneBudget ?? undefined } : {}),
     ...(budgetMin ? { budgetMin } : {}),
   };
 }
@@ -923,8 +1771,37 @@ async function getProductMatches(body: string): Promise<{
   };
 }
 
-async function buildBotReply(body: string): Promise<BotReply> {
+async function buildBotReply(
+  body: string,
+  memory: AiConciergeMemoryMessage[] = [],
+): Promise<BotReply> {
+  const removalReply = await buildRemovalFallbackReply(body, memory);
+
+  if (removalReply) {
+    return removalReply;
+  }
+
+  const favoriteReply = await buildFavoriteFallbackReply(body, memory);
+
+  if (favoriteReply) {
+    return favoriteReply;
+  }
+
+  const memoryCartReply = await buildMemoryCartAddReply(body, memory);
+
+  if (memoryCartReply) {
+    return memoryCartReply;
+  }
+
+  const memoryReply = buildMemoryFallbackReply(body, memory);
+
+  if (memoryReply) {
+    return memoryReply;
+  }
+
+  const asksForRecommendation = includesAnyKeyword(body, RECOMMENDATION_KEYWORDS);
   const asksAboutProducts =
+    asksForRecommendation ||
     includesAnyKeyword(body, PRODUCT_KEYWORDS) ||
     includesAnyKeyword(body, PRICE_KEYWORDS) ||
     includesAnyKeyword(body, DRESS_WATCH_KEYWORDS) ||
@@ -1035,15 +1912,19 @@ async function buildBotReply(body: string): Promise<BotReply> {
         : `I did not find an exact match for "${result.searchTerm || body}", but these are the closest options`;
 
       return {
-        body: includesAnyKeyword(body, PRICE_KEYWORDS)
-          ? `Concierge brief: ${lead}. Indicative range: ${priceRange}. Inventory: ${inventory}. Final pricing and allocation can still be confirmed by the desk.`
-          : `Concierge brief: ${lead}. I ranked the list by availability, budget fit, size, and use case, then attached the strongest matches below.`,
+        body: asksForRecommendation
+          ? `Concierge recommendation: ${lead}. My first pass prioritizes live availability, budget fit, size, and use case. Indicative range: ${priceRange}. Inventory: ${inventory}. Add a budget, wrist size, or daily/formal/sport use case for a sharper pick.`
+          : includesAnyKeyword(body, PRICE_KEYWORDS)
+            ? `Concierge brief: ${lead}. Indicative range: ${priceRange}. Inventory: ${inventory}. Final pricing and allocation can still be confirmed by the desk.`
+            : `Concierge brief: ${lead}. I ranked the list by availability, budget fit, size, and use case, then attached the strongest matches below.`,
         suggestions,
       };
     }
 
     return {
-      body: "Concierge brief: I could not find a clean match in current inventory. Send a brand, reference, case size, budget, or use case like daily, formal, sport, or collector and I will narrow it again.",
+      body: asksForRecommendation
+        ? "Concierge recommendation: I can recommend a stronger piece once I have one useful signal. Send a budget, brand, case size, or use case like daily, formal, sport, or collector and I will narrow it again."
+        : "Concierge brief: I could not find a clean match in current inventory. Send a brand, reference, case size, budget, or use case like daily, formal, sport, or collector and I will narrow it again.",
       suggestions: [
         pageSuggestion({
           href: "/collection",
@@ -1102,17 +1983,64 @@ async function buildBotReply(body: string): Promise<BotReply> {
   };
 }
 
-async function buildAiConciergeReply(body: string): Promise<BotReply> {
+async function loadAiConciergeMemory(conversationId: string): Promise<AiConciergeMemoryMessage[]> {
   try {
-    const reply = await storefrontApi.askAiConcierge({ message: body });
+    const snapshot = await getDocs(
+      query(
+        messagesRef(conversationId),
+        orderBy("createdAt", "desc"),
+        limit(8),
+      ),
+    );
+
+    return snapshot.docs
+      .map(mapMessageSnapshot)
+      .reverse()
+      .filter((message) => message.channel === "ai")
+      .map((message) => ({
+        body: message.body,
+        senderRole: message.senderRole,
+        suggestions: message.suggestions.slice(0, 4),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+async function buildAiConciergeReply(
+  body: string,
+  memory: AiConciergeMemoryMessage[] = [],
+): Promise<BotReply> {
+  const removalReply = await buildRemovalFallbackReply(body, memory);
+
+  if (removalReply) {
+    return removalReply;
+  }
+
+  const favoriteReply = await buildFavoriteFallbackReply(body, memory);
+
+  if (favoriteReply) {
+    return favoriteReply;
+  }
+
+  const memoryCartReply = await buildMemoryCartAddReply(body, memory);
+
+  if (memoryCartReply) {
+    return memoryCartReply;
+  }
+
+  try {
+    const reply = await storefrontApi.askAiConcierge({ memory, message: body });
 
     return {
       body: reply.body,
+      cart: reply.cart,
+      favorites: reply.favorites,
       suggestions: reply.suggestions,
     };
   } catch {
     try {
-      return await buildBotReply(body);
+      return await buildBotReply(body, memory);
     } catch {
       return {
         body: "I have noted your message. The concierge context service is temporarily unavailable, but your message is saved here for the desk.",
@@ -1127,6 +2055,30 @@ async function buildAiConciergeReply(body: string): Promise<BotReply> {
       };
     }
   }
+}
+
+function emitCartUpdated(cart?: CartRecord): void {
+  if (!cart || typeof window === "undefined") {
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent<CartRecord>(SUPPORT_CHAT_CART_UPDATED_EVENT, {
+      detail: cart,
+    }),
+  );
+}
+
+function emitFavoritesUpdated(favorites?: FavoriteRecord): void {
+  if (!favorites || typeof window === "undefined") {
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent<FavoriteRecord>(SUPPORT_CHAT_FAVORITES_UPDATED_EVENT, {
+      detail: favorites,
+    }),
+  );
 }
 
 function conversationRef(conversationId: string) {
@@ -1272,6 +2224,7 @@ export async function sendCustomerSupportMessage({
   const messageRef = doc(messagesRef(user.id));
   const messageChannel: SupportChatChannel = channel ?? (adminOnline ? "admin" : "ai");
   const mode: SupportConversationMode = messageChannel === "admin" ? "human" : "bot";
+  const aiMemory = messageChannel === "ai" ? await loadAiConciergeMemory(user.id) : [];
   const batch = writeBatch(getFirebaseClientDb());
 
   if (messageChannel === "admin" && !adminOnline) {
@@ -1326,7 +2279,7 @@ export async function sendCustomerSupportMessage({
     return;
   }
 
-  const botReply = await buildAiConciergeReply(trimmedBody);
+  const botReply = await buildAiConciergeReply(trimmedBody, aiMemory);
 
   await addDoc(messagesRef(user.id), {
     body: botReply.body,
@@ -1352,6 +2305,8 @@ export async function sendCustomerSupportMessage({
     },
     { merge: true },
   );
+  emitCartUpdated(botReply.cart);
+  emitFavoritesUpdated(botReply.favorites);
 }
 
 export async function sendAdminSupportMessage({

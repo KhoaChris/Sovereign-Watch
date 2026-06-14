@@ -2,6 +2,8 @@ import axios from "axios";
 
 import type {
   AddCartItemPayload,
+  AdminAiOperationsRequest,
+  AdminAiOperationsResponse,
   AiConciergeRequest,
   AiConciergeResponse,
   ApiResponse,
@@ -216,6 +218,13 @@ export const storefrontApi = {
       api.post<ApiResponse<AiConciergeResponse>>("/support/ai-concierge", payload),
     );
   },
+  async askAdminAiOperations(
+    payload: AdminAiOperationsRequest,
+  ): Promise<AdminAiOperationsResponse> {
+    return unwrapResponse(
+      api.post<ApiResponse<AdminAiOperationsResponse>>("/support/admin-ai", payload),
+    );
+  },
   async requestSignUpEmailOtp(payload: RequestEmailOtpPayload): Promise<EmailOtpResponse> {
     return unwrapResponse(
       api.post<ApiResponse<EmailOtpResponse>>("/auth/email-otp/sign-up/request", payload),
@@ -258,6 +267,9 @@ export const storefrontApi = {
   async removeFavorite(productId: string): Promise<FavoriteRecord> {
     return unwrapResponse(api.delete<ApiResponse<FavoriteRecord>>(`/favorites/${productId}`));
   },
+  async clearFavorites(): Promise<FavoriteRecord> {
+    return unwrapResponse(api.delete<ApiResponse<FavoriteRecord>>("/favorites"));
+  },
   async getCart(): Promise<CartRecord> {
     return unwrapResponse(api.get<ApiResponse<CartRecord>>("/cart"));
   },
@@ -269,6 +281,9 @@ export const storefrontApi = {
   },
   async removeCartItem(itemId: string): Promise<CartRecord> {
     return unwrapResponse(api.delete<ApiResponse<CartRecord>>(`/cart/items/${itemId}`));
+  },
+  async clearCart(): Promise<CartRecord> {
+    return unwrapResponse(api.delete<ApiResponse<CartRecord>>("/cart"));
   },
   async checkoutCart(payload: CheckoutCartPayload): Promise<CheckoutCartResponse> {
     return unwrapResponse(api.post<ApiResponse<CheckoutCartResponse>>("/cart/checkout", payload));

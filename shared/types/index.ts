@@ -393,18 +393,95 @@ export interface SupportChatMessage {
 
 export type AiConciergeResponseSource = "backend_context" | "local_fallback";
 
+export interface AiConciergeMemoryMessage {
+  body: string;
+  senderRole: SupportSenderRole;
+  suggestions: SupportChatProductSuggestion[];
+}
+
 export interface AiConciergeRequest {
+  memory?: AiConciergeMemoryMessage[];
   message: string;
 }
 
 export interface AiConciergeResponse {
   body: string;
+  cart?: CartRecord;
+  favorites?: FavoriteRecord;
   context: {
     intent: string;
     matchedProducts: number;
     recentOrders: number;
   };
   source: AiConciergeResponseSource;
+  suggestions: SupportChatProductSuggestion[];
+}
+
+export type AdminAiOperationsIntent =
+  | "catalog_draft"
+  | "fulfillment"
+  | "greeting"
+  | "help"
+  | "inventory"
+  | "product_lookup"
+  | "revenue"
+  | "revenue_compare"
+  | "risk"
+  | "strategy"
+  | "summary";
+
+export interface AdminAiOperationsMemoryMessage {
+  body: string;
+  senderRole: Extract<SupportSenderRole, "admin" | "bot">;
+  suggestions: SupportChatProductSuggestion[];
+}
+
+export interface AdminAiOperationsRequest {
+  memory?: AdminAiOperationsMemoryMessage[];
+  message: string;
+}
+
+export interface AdminAiOperationsMetric {
+  label: string;
+  tone: "default" | "positive" | "warning" | "critical";
+  value: string;
+}
+
+export interface AdminAiCatalogDraftVariant {
+  color: string;
+  discountPrice: number | null;
+  price: number;
+  size: string;
+  sku: string;
+  stockQuantity: number;
+}
+
+export interface AdminAiCatalogDraft {
+  brandId: string;
+  categoryId: string;
+  description: string;
+  imageUrl: string;
+  name: string;
+  reference: string;
+  sourceUrl: string;
+  strategyNote: string;
+  type: string;
+  variants: AdminAiCatalogDraftVariant[];
+}
+
+export interface AdminAiOperationsResponse {
+  body: string;
+  catalogDrafts: AdminAiCatalogDraft[];
+  context: {
+    activeProducts: number;
+    grossRevenue: number;
+    intent: AdminAiOperationsIntent;
+    lowStockProducts: number;
+    orders: number;
+    pendingFulfillment: number;
+  };
+  metrics: AdminAiOperationsMetric[];
+  source: "backend_operations";
   suggestions: SupportChatProductSuggestion[];
 }
 

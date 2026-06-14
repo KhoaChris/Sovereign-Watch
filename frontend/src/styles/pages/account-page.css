@@ -1,7 +1,12 @@
 .account-page {
+  --account-champagne-glow: rgba(207, 168, 125, 0.14);
+  --account-ice-glow: rgba(126, 162, 214, 0.11);
+  --account-line: rgba(255, 255, 255, 0.08);
   position: relative;
-  overflow: hidden;
-  padding: clamp(1.25rem, 3vw, 2.8rem) 1.25rem 3rem;
+  min-height: calc(100vh - 5rem);
+  isolation: isolate;
+  overflow: clip;
+  padding: clamp(1.15rem, 2.4vw, 2rem) 1rem 7rem;
 }
 
 .account-page::before,
@@ -12,34 +17,33 @@
 }
 
 .account-page::before {
-  inset: 0 0 auto;
-  height: 32rem;
+  z-index: -2;
+  inset: 0;
+  height: auto;
   background:
     radial-gradient(
-      circle at 12% 16%,
-      rgba(207, 168, 125, 0.18),
-      transparent 22rem
+      circle at 16% 9%,
+      var(--account-champagne-glow),
+      transparent 21rem
     ),
     radial-gradient(
-      circle at 84% 14%,
-      rgba(73, 98, 153, 0.14),
-      transparent 20rem
+      circle at 80% 12%,
+      var(--account-ice-glow),
+      transparent 24rem
     ),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 70%);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 22rem);
+  opacity: 0.9;
 }
 
 .account-page::after {
-  inset: 8rem -12rem auto auto;
-  width: clamp(18rem, 34vw, 34rem);
-  height: clamp(18rem, 34vw, 34rem);
-  border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    rgba(255, 255, 255, 0.05),
-    transparent 72%
-  );
-  filter: blur(12px);
-  opacity: 0.4;
+  z-index: -1;
+  inset: 0;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: 6rem 6rem;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.5), transparent 25rem);
+  opacity: 0.16;
 }
 
 .account-page__shell {
@@ -47,19 +51,18 @@
   z-index: 1;
   display: grid;
   gap: clamp(1rem, 2vw, 1.6rem);
-  max-width: 76rem;
+  width: min(100%, 88rem);
   margin: 0 auto;
-  justify-content: center;
 }
 
 .account-page__stage {
   position: relative;
   display: grid;
-  gap: clamp(1.5rem, 3vw, 2.8rem);
-  min-height: clamp(27rem, 58vw, 37rem);
-  padding: clamp(1.35rem, 3vw, 2.45rem);
+  gap: clamp(1.15rem, 2.4vw, 2rem);
+  min-height: 0;
+  padding: clamp(1.5rem, 3vw, 3rem) 0 clamp(1.55rem, 3vw, 2.6rem);
   overflow: hidden;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--account-line);
 }
 
 .account-page__stage::before,
@@ -70,16 +73,17 @@
 }
 
 .account-page__stage::before {
-  inset: 10% 36% 12% auto;
-  width: clamp(18rem, 30vw, 28rem);
+  inset: 7% auto auto 5%;
+  width: clamp(18rem, 32vw, 32rem);
+  height: clamp(18rem, 32vw, 32rem);
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    rgba(207, 168, 125, 0.1),
+    rgba(207, 168, 125, 0.11),
     transparent 72%
   );
-  filter: blur(22px);
-  opacity: 0.7;
+  filter: blur(24px);
+  opacity: 0.76;
 }
 
 .account-page__stage::after {
@@ -96,8 +100,11 @@
 .account-page__stage-copy {
   position: relative;
   z-index: 2;
-  max-width: 47rem;
-  padding-top: 0.6rem;
+  display: grid;
+  align-content: center;
+  max-width: 52rem;
+  min-width: 0;
+  padding-top: 0.4rem;
 }
 
 .account-page__eyebrow,
@@ -113,13 +120,12 @@
 }
 
 .account-page__title {
-  max-width: 11ch;
-  margin: 0.9rem 0 0;
+  max-width: 47rem;
+  margin: 0.72rem 0 0;
   color: var(--color-pearl);
   font-family: var(--font-display);
-  font-size: clamp(2.85rem, 7vw, 6.1rem);
-  line-height: 0.9;
-  letter-spacing: -0.04em;
+  font-size: clamp(2.8rem, 6.5vw, 5.2rem);
+  line-height: 0.98;
   text-wrap: balance;
 }
 
@@ -136,26 +142,31 @@
 }
 
 .account-page__copy {
-  max-width: 45rem;
-  margin-top: 1rem;
+  max-width: 42rem;
+  margin-top: 0.65rem;
 }
 
 .account-page__stage-meta {
-  display: flex;
+  display: none;
   flex-wrap: wrap;
-  gap: 0.8rem;
-  margin-top: 1.45rem;
+  gap: 0;
+  width: min(100%, 29rem);
+  margin-top: 1.75rem;
+  border-block: 1px solid var(--account-line);
 }
 
 .account-page__meta-chip {
   display: grid;
   gap: 0.24rem;
-  padding: 0.8rem 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 1.25rem;
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(12px);
-  width: 9rem;
+  flex: 1 1 10rem;
+  min-width: 0;
+  padding: 0.95rem 1.15rem 0.95rem 0;
+  background: linear-gradient(90deg, rgba(207, 168, 125, 0.055), transparent);
+}
+
+.account-page__meta-chip + .account-page__meta-chip {
+  padding-left: 1.15rem;
+  border-left: 1px solid var(--account-line);
 }
 
 .account-page__meta-chip span {
@@ -173,9 +184,10 @@
 
 .account-page__stage-visual {
   position: relative;
-  min-height: clamp(18rem, 36vw, 28rem);
+  min-width: 0;
+  min-height: 0;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: flex-end;
 }
 
@@ -187,19 +199,19 @@
 }
 
 .account-page__stage-visual::before {
-  inset: 8% 10% auto auto;
-  width: clamp(18rem, 34vw, 30rem);
-  height: clamp(16rem, 34vw, 28rem);
+  inset: -18% 0 auto auto;
+  width: clamp(16rem, 27vw, 26rem);
+  height: clamp(14rem, 27vw, 24rem);
   background: radial-gradient(circle, rgba(72, 95, 148, 0.18), transparent 70%);
   filter: blur(12px);
-  opacity: 0.8;
+  opacity: 0.58;
   animation: account-float 9s ease-in-out infinite;
 }
 
 .account-page__stage-visual::after {
-  inset: auto 6% 4% auto;
-  width: 68%;
-  height: 34%;
+  inset: auto 0 -18% auto;
+  width: 72%;
+  height: 42%;
   background: radial-gradient(
     circle at center,
     rgba(207, 168, 125, 0.12),
@@ -212,11 +224,12 @@
   position: relative;
   display: grid;
   justify-items: end;
-  gap: 1rem;
-  width: min(100%, 34rem);
-  min-height: clamp(18rem, 35vw, 28rem);
+  gap: 0;
+  width: min(100%, 31rem);
+  min-height: auto;
   margin-left: auto;
-  padding: clamp(1rem, 2.6vw, 2rem);
+  padding: 0;
+  border-block: 1px solid var(--account-line);
   isolation: isolate;
 }
 
@@ -227,12 +240,12 @@
 .account-page__signal {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: calc(var(--radius-card) - 0.1rem);
+  border: 1px solid var(--account-line);
+  border-radius: calc(var(--radius-card) - 0.25rem);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 42%),
-    rgba(10, 12, 17, 0.82);
-  box-shadow: var(--shadow-soft);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 44%),
+    rgba(9, 12, 18, 0.74);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.22);
 }
 
 .account-page__member-badge::before,
@@ -256,22 +269,35 @@
 .account-page__member-badge,
 .account-page__member-progress {
   z-index: 2;
-  width: min(100%, 22rem);
-  padding: 1rem 1.1rem;
-  backdrop-filter: blur(14px);
+  width: 100%;
+  padding: 1rem 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .account-page__member-badge {
-  margin-top: auto;
+  margin-top: 0;
+}
+
+.account-page__member-progress {
+  border-top: 1px solid var(--account-line);
+}
+
+.account-page__member-badge::before,
+.account-page__member-progress::before {
+  display: none;
 }
 
 .account-page__member-badge strong,
 .account-page__member-progress strong {
   display: block;
-  margin-top: 0.55rem;
+  margin-top: 0.58rem;
   color: var(--color-pearl);
   font-family: var(--font-display);
-  font-size: clamp(1.45rem, 2.4vw, 2rem);
+  font-size: clamp(1.3rem, 2.1vw, 1.8rem);
   line-height: 1;
 }
 
@@ -325,15 +351,26 @@
 
 .account-page__signal-row {
   display: grid;
-  gap: 0.9rem;
+  gap: 0;
+  overflow: hidden;
+  border-block: 1px solid var(--account-line);
+  background: linear-gradient(90deg, rgba(207, 168, 125, 0.055), transparent);
 }
 
 .account-page__signal {
-  padding: 1rem 1rem 1.1rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 1rem 0;
+}
+
+.account-page__signal + .account-page__signal {
+  border-top: 1px solid var(--account-line);
 }
 
 .account-page__signal--emphasis {
-  border-color: rgba(207, 168, 125, 0.24);
+  background: linear-gradient(90deg, rgba(207, 168, 125, 0.07), transparent);
 }
 
 .account-page__signal-value {
@@ -341,8 +378,9 @@
   margin-top: 0.7rem;
   color: var(--color-pearl);
   font-family: var(--font-display);
-  font-size: clamp(1.55rem, 2.8vw, 2.25rem);
-  line-height: 0.95;
+  font-size: clamp(1.35rem, 2.35vw, 1.95rem);
+  font-weight: 400;
+  line-height: 1;
 }
 
 .account-page__signal-meta {
@@ -353,23 +391,24 @@
 
 .account-page__workspace {
   display: grid;
-  gap: 1.25rem;
+  gap: 1.5rem;
+  margin-top: 1rem;
 }
 
 .account-page__panel {
-  padding: clamp(1.2rem, 2.4vw, 1.7rem);
+  padding: clamp(1.2rem, 2.4vw, 1.85rem);
 }
 
 .account-page__panel--form {
   display: grid;
-  gap: 1.35rem;
+  gap: 1.45rem;
 }
 
 .account-page__section-head {
   display: flex;
   gap: 1rem;
-  padding-bottom: 1.2rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--account-line);
 }
 
 .account-page__section-title {
@@ -384,10 +423,9 @@
 .account-page__identity {
   display: grid;
   gap: 0.35rem;
-  padding: 0.95rem 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 1.2rem;
-  background: rgba(255, 255, 255, 0.03);
+  padding: 0.95rem 0;
+  border-block: 1px solid var(--account-line);
+  background: transparent;
 }
 
 .account-page__identity strong {
@@ -400,12 +438,12 @@
 
 .account-page__form {
   display: grid;
-  gap: 1.2rem;
+  gap: 1.35rem;
 }
 
 .account-page__form-grid {
   display: grid;
-  gap: 1rem;
+  gap: 1.05rem;
 }
 
 .account-page__field {
@@ -429,11 +467,15 @@
 .account-page__field textarea,
 .account-page__otp-field input {
   width: 100%;
-  padding: 1rem 1.05rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 1.3rem;
-  background: rgba(255, 255, 255, 0.04);
+  min-height: 3.75rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 1.35rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent),
+    rgba(255, 255, 255, 0.035);
   color: var(--color-pearl);
+  font: inherit;
   outline: none;
   transition:
     border-color var(--motion-fast),
@@ -444,6 +486,7 @@
 
 .account-page__field textarea {
   min-height: 9.5rem;
+  line-height: 1.7;
   resize: vertical;
 }
 
@@ -452,8 +495,12 @@
 .account-page__otp-field input:focus {
   transform: translateY(-1px);
   border-color: rgba(207, 168, 125, 0.5);
-  background: rgba(255, 255, 255, 0.05);
-  box-shadow: 0 0 0 4px rgba(207, 168, 125, 0.08);
+  background:
+    linear-gradient(180deg, rgba(207, 168, 125, 0.055), transparent),
+    rgba(255, 255, 255, 0.045);
+  box-shadow:
+    0 0 0 4px rgba(207, 168, 125, 0.08),
+    0 18px 34px rgba(0, 0, 0, 0.16);
 }
 
 .account-page__field input:disabled {
@@ -469,7 +516,7 @@
 }
 
 .account-page__email-verification {
-  padding: 1rem;
+  padding: 1rem 1.05rem;
   border: 1px solid rgba(207, 168, 125, 0.16);
   border-radius: 1.35rem;
   background:
@@ -511,20 +558,21 @@
 
 .account-page__avatar-field {
   display: grid;
-  gap: 1rem;
-  padding: 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 1.35rem;
-  background: rgba(255, 255, 255, 0.03);
+  gap: 1.05rem;
+  padding: 1.05rem 0 1.2rem;
+  border-block: 1px solid var(--account-line);
+  background:
+    linear-gradient(90deg, rgba(207, 168, 125, 0.055), transparent 54%),
+    transparent;
 }
 
 .account-page__avatar-preview {
   display: grid;
   place-items: center;
-  width: 6.5rem;
-  height: 6.5rem;
-  border: 1px solid rgba(207, 168, 125, 0.22);
-  border-radius: 1.7rem;
+  width: 6rem;
+  height: 6rem;
+  border: 1px solid rgba(207, 168, 125, 0.24);
+  border-radius: 50%;
   background:
     radial-gradient(
       circle at 30% 25%,
@@ -538,7 +586,9 @@
     ),
     rgba(255, 255, 255, 0.02);
   overflow: hidden;
-  box-shadow: var(--shadow-soft);
+  box-shadow:
+    0 0 0 0.55rem rgba(255, 255, 255, 0.025),
+    0 20px 40px rgba(0, 0, 0, 0.22);
 }
 
 .account-page__avatar-image,
@@ -557,13 +607,13 @@
 
 .account-page__avatar-copy {
   display: grid;
-  gap: 0.75rem;
+  gap: 0.62rem;
 }
 
 .account-page__avatar-copy strong {
   color: var(--color-pearl);
-  font-size: 1rem;
-  font-weight: 500;
+  font-size: clamp(1.15rem, 2vw, 1.45rem);
+  font-weight: 600;
 }
 
 .account-page__avatar-copy p {
@@ -576,7 +626,8 @@
 .account-page__avatar-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.85rem;
+  gap: 0.75rem;
+  margin-top: 0.15rem;
 }
 
 .account-page__avatar-input {
@@ -601,6 +652,7 @@
   border-radius: var(--radius-pill);
   background: rgba(255, 255, 255, 0.04);
   color: var(--color-pearl);
+  cursor: pointer;
   font-size: 0.7rem;
   letter-spacing: 0.28em;
   text-transform: uppercase;
@@ -620,9 +672,10 @@
 .account-page__button--primary {
   background: linear-gradient(
     135deg,
-    rgba(207, 168, 125, 0.28),
-    rgba(207, 168, 125, 0.08)
+    rgba(207, 168, 125, 0.32),
+    rgba(207, 168, 125, 0.1)
   );
+  border-color: rgba(207, 168, 125, 0.32);
 }
 
 .account-page__button:disabled {
@@ -651,7 +704,7 @@
 .account-page__panel--summary,
 .account-page__panel--note {
   display: grid;
-  gap: 1rem;
+  gap: 1.15rem;
 }
 
 .account-page__summary-top {
@@ -664,10 +717,10 @@
 .account-page__summary-mark {
   display: grid;
   place-items: center;
-  width: 4.35rem;
-  height: 4.35rem;
+  width: 4.8rem;
+  height: 4.8rem;
   border: 1px solid rgba(207, 168, 125, 0.22);
-  border-radius: 1.35rem;
+  border-radius: 50%;
   background:
     radial-gradient(
       circle at 30% 25%,
@@ -698,17 +751,21 @@
 
 .account-page__summary-grid {
   display: grid;
-  gap: 0.8rem;
+  gap: 0;
   height: fit-content;
+  border-block: 1px solid var(--account-line);
 }
 
 .account-page__summary-metric {
   display: grid;
   gap: 0.32rem;
-  padding: 0.95rem 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 1.2rem;
-  background: rgba(255, 255, 255, 0.03);
+  min-width: 0;
+  padding: 0.95rem 0;
+  background: transparent;
+}
+
+.account-page__summary-metric + .account-page__summary-metric {
+  border-top: 1px solid var(--account-line);
 }
 
 .account-page__summary-metric span {
@@ -728,7 +785,8 @@
 
 .account-page__quick-links {
   display: grid;
-  gap: 0.8rem;
+  gap: 0;
+  border-block: 1px solid var(--account-line);
 }
 
 .account-page__quick-link {
@@ -736,29 +794,28 @@
   grid-template-columns: auto 1fr auto;
   gap: 0.85rem;
   align-items: center;
-  padding: 0.95rem 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 1.2rem;
-  background: rgba(255, 255, 255, 0.03);
+  min-width: 0;
+  padding: 0.95rem 0;
+  background: transparent;
+  cursor: pointer;
   transition:
-    transform var(--motion-fast),
-    border-color var(--motion-fast),
+    color var(--motion-fast),
     background-color var(--motion-fast),
-    box-shadow var(--motion-fast);
+    padding-left var(--motion-fast);
+}
+
+.account-page__quick-link + .account-page__quick-link {
+  border-top: 1px solid var(--account-line);
 }
 
 .account-page__quick-link:hover {
-  transform: translateY(-2px);
-  border-color: rgba(207, 168, 125, 0.36);
-  background: rgba(255, 255, 255, 0.05);
-  box-shadow: 0 18px 28px rgba(0, 0, 0, 0.18);
+  padding-left: 0.35rem;
+  background: linear-gradient(90deg, rgba(207, 168, 125, 0.075), transparent);
 }
 
 .account-page__quick-link--static:hover {
-  transform: none;
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
-  box-shadow: none;
+  padding-left: 0;
+  background: transparent;
 }
 
 .account-page__quick-link strong {
@@ -774,6 +831,10 @@
   color: var(--color-smoke);
   font-size: 0.88rem;
   line-height: 1.7;
+}
+
+.account-page__quick-icon {
+  color: var(--color-champagne-bright);
 }
 
 .account-page__quick-arrow {
@@ -849,9 +910,31 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .account-page__signal + .account-page__signal {
+    border-top: 0;
+  }
+
+  .account-page__signal:nth-child(2n) {
+    padding-left: 1rem;
+    border-left: 1px solid var(--account-line);
+  }
+
+  .account-page__signal:nth-child(n + 3) {
+    border-top: 1px solid var(--account-line);
+  }
+
   .account-page__form-grid,
   .account-page__summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .account-page__summary-metric + .account-page__summary-metric {
+    border-top: 0;
+  }
+
+  .account-page__summary-metric:nth-child(2n) {
+    padding-left: 1rem;
+    border-left: 1px solid var(--account-line);
   }
 
   .account-page__field--wide {
@@ -887,16 +970,33 @@
 
 @media (min-width: 1080px) {
   .account-page__stage {
-    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.08fr);
+    grid-template-columns: minmax(0, 1.45fr) minmax(18rem, 0.85fr);
     align-items: center;
   }
 
   .account-page__title {
-    max-width: 10ch;
+    max-width: 47rem;
   }
 
   .account-page__signal-row {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .account-page__signal {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .account-page__signal:first-child {
+    padding-left: 0;
+  }
+
+  .account-page__signal:nth-child(n) {
+    border-top: 0;
+  }
+
+  .account-page__signal + .account-page__signal {
+    border-left: 1px solid var(--account-line);
   }
 
   .account-page__workspace {
@@ -920,23 +1020,25 @@
 }
 
 @media (min-width: 1320px) {
-  .account-page__stage {
-    min-height: 39rem;
-  }
-
   .account-page__member-orbit {
-    width: min(100%, 37rem);
+    width: min(100%, 33rem);
   }
 }
 
 @media (max-width: 719px) {
   .account-page__title {
-    max-width: 9ch;
+    max-width: 10ch;
   }
 
   .account-page__stage-meta {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .account-page__meta-chip + .account-page__meta-chip {
+    padding-left: 0;
+    border-top: 1px solid var(--account-line);
+    border-left: 0;
   }
 
   .account-page__member-orbit {
@@ -968,8 +1070,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .account-page__stage-visual::before,
-  .account-page__member-orbit::before,
-  .account-page__member-orbit::after,
   .account-page__loading-bar {
     animation: none;
   }
