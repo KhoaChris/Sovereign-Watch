@@ -77,6 +77,8 @@ interface BotReply {
 interface ConciergeIntent {
   budgetMax?: number;
   budgetMin?: number;
+  budgetTarget?: number;
+  isApproximateBudget?: boolean;
   occasion: "collector" | "daily" | "formal" | "sport" | null;
   size?: string;
   wantsAvailableOnly: boolean;
@@ -124,6 +126,10 @@ const PRODUCT_KEYWORDS = [
   "watch",
 ];
 const PRICE_KEYWORDS = [
+  "about",
+  "approx",
+  "approximately",
+  "around",
   "bao gia",
   "báo giá",
   "bao nhiêu",
@@ -135,8 +141,11 @@ const PRICE_KEYWORDS = [
   "gia",
   "giá",
   "less than",
+  "match",
   "max",
+  "near",
   "price",
+  "roughly",
   "under",
   "up to",
 ];
@@ -307,6 +316,11 @@ const REMOVE_KEYWORDS = [
 
 const SEARCH_STOP_WORDS = [
   "advise",
+  "about",
+  "approx",
+  "approximately",
+  "approximatelt",
+  "around",
   "available",
   "bao",
   "bao gia",
@@ -318,11 +332,25 @@ const SEARCH_STOP_WORDS = [
   "best piece",
   "best watch",
   "best",
+  "build cart",
+  "build me a cart",
+  "build reserve cart",
+  "build",
+  "cart",
+  "cart around",
+  "cart for",
+  "cart near",
+  "cart that match",
+  "cart that matches",
   "cho",
   "clear",
   "co",
   "có",
   "cost",
+  "create cart",
+  "create me a cart",
+  "create reserve cart",
+  "create",
   "delete",
   "dong ho",
   "đồng hồ",
@@ -341,6 +369,13 @@ const SEARCH_STOP_WORDS = [
   "help me choose",
   "kiem",
   "kiếm",
+  "make cart",
+  "make me a cart",
+  "make",
+  "me",
+  "match",
+  "matches",
+  "matching",
   "mau",
   "mẫu",
   "minh",
@@ -349,8 +384,12 @@ const SEARCH_STOP_WORDS = [
   "nên chọn",
   "nen mua",
   "nên mua",
+  "near",
   "pick for me",
   "pick",
+  "prepare cart",
+  "prepare reserve cart",
+  "prepare",
   "price",
   "product",
   "recommendation",
@@ -364,6 +403,9 @@ const SEARCH_STOP_WORDS = [
   "saved pieces",
   "saved reference",
   "saved references",
+  "stage cart",
+  "stage reserve cart",
+  "roughly",
   "search",
   "san pham",
   "sản phẩm",
@@ -800,9 +842,14 @@ function selectCartVariant(product: ProductRecord, intent: ConciergeIntent): Pro
       )
     : availableVariants;
   const candidates = sizeMatchedVariants.length > 0 ? sizeMatchedVariants : availableVariants;
-  const [bestVariant] = [...candidates].sort(
-    (left, right) => getVariantPrice(left) - getVariantPrice(right),
-  );
+  const [bestVariant] = [...candidates].sort((left, right) => {
+    if (intent.budgetTarget !== undefined) {
+      return Math.abs(getVariantPrice(left) - intent.budgetTarget) -
+        Math.abs(getVariantPrice(right) - intent.budgetTarget);
+    }
+
+    return getVariantPrice(left) - getVariantPrice(right);
+  });
 
   return bestVariant ?? null;
 }
@@ -1428,7 +1475,7 @@ function parseMoneyAmount(rawAmount: string, suffix = ""): number | null {
 
 function findFirstMoneyValue(text: string): number | null {
   const moneyPattern =
-    /(?:usd|\$)?\s*(\d+(?:[,.]\d{3})*|\d+(?:[,.]\d+)?)\s*(k|thousand|nghin|ngan)?\s*(usd|\$)?/gi;
+    /(?:usd|\$)?\s*(\d+(?:[,.]\d{3})*|\d+(?:[,.]\d+)?)\s*(k|thousand|nghin|ngan)?\s*(usd|dollars?|\$)?/gi;
 
   for (const match of text.matchAll(moneyPattern)) {
     const fullMatch = match[0] ?? "";
@@ -1452,9 +1499,56 @@ function findFirstMoneyValue(text: string): number | null {
   return null;
 }
 
-function extractBudgetIntent(body: string): Pick<ConciergeIntent, "budgetMax" | "budgetMin"> {
+function findContextualBudgetValue(text: string): number | null {
+  const moneyLikePattern =
+    /(\d+(?:[,.]\d{3})*|\d+(?:[,.]\d+)?)\s*(k|thousand|nghin|ngan)?/gi;
+
+  for (const match of text.matchAll(moneyLikePattern)) {
+    const rawAmount = match[1] ?? "";
+    const suffix = match[2] ?? "";
+    const nextText = text.slice((match.index ?? 0) + (match[0]?.length ?? 0), (match.index ?? 0) + (match[0]?.length ?? 0) + 4);
+
+    if (/^\s*mm\b/i.test(nextText)) {
+      continue;
+    }
+
+    const value = parseMoneyAmount(rawAmount, suffix);
+
+    if (value && (suffix || value >= 1_000)) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function isApproximateBudgetRequest(text: string): boolean {
+  return /\b(?:about|approx|approximat\w*|around|close to|khoang|khoảng|near|roughly|tam|tầm|xap xi|xấp xỉ)\b/.test(text) ||
+    /\b(?:build|create|make|prepare|stage)\b.*\b(?:cart|reserve)\b/.test(text) ||
+    /\b(?:cart|reserve)\b.*\b(?:match|matches|matching)\b/.test(text) ||
+    /\b(?:match|matches|matching)\b.*\b(?:budget|cart|reserve)\b/.test(text);
+}
+
+function buildApproximateBudgetRange(target: number): Pick<
+  ConciergeIntent,
+  "budgetMax" | "budgetMin" | "budgetTarget" | "isApproximateBudget"
+> {
+  const spread = Math.max(3_000, Math.round(target * 0.2));
+
+  return {
+    budgetMax: target + spread,
+    budgetMin: Math.max(1, target - spread),
+    budgetTarget: target,
+    isApproximateBudget: true,
+  };
+}
+
+function extractBudgetIntent(body: string): Pick<
+  ConciergeIntent,
+  "budgetMax" | "budgetMin" | "budgetTarget" | "isApproximateBudget"
+> {
   const text = normalizeForSearch(body);
-  const amountPattern = "(\\d+(?:[,.]\\d{3})*|\\d+(?:[,.]\\d+)?)\\s*(k|thousand|nghin|ngan)?\\s*(?:usd|\\$)?";
+  const amountPattern = "(\\d+(?:[,.]\\d{3})*|\\d+(?:[,.]\\d+)?)\\s*(k|thousand|nghin|ngan)?\\s*(?:usd|dollars?|\\$)?";
   const rangeMatch = text.match(
     new RegExp(`(?:between|from|tu|từ)\\s+(?:usd|\\$)?\\s*${amountPattern}\\s*(?:-|to|and|den|đến)\\s*(?:usd|\\$)?\\s*${amountPattern}(?!\\s*mm)`, "i"),
   );
@@ -1479,7 +1573,13 @@ function extractBudgetIntent(body: string): Pick<ConciergeIntent, "budgetMax" | 
   );
   const budgetMax = maxMatch ? parseMoneyAmount(maxMatch[1], maxMatch[2]) : null;
   const budgetMin = minMatch ? parseMoneyAmount(minMatch[1], minMatch[2]) : null;
-  const standaloneBudget = !budgetMax && !budgetMin ? findFirstMoneyValue(text) : null;
+  const standaloneBudget = !budgetMax && !budgetMin
+    ? findFirstMoneyValue(text) ?? (isApproximateBudgetRequest(text) ? findContextualBudgetValue(text) : null)
+    : null;
+
+  if (standaloneBudget && isApproximateBudgetRequest(text)) {
+    return buildApproximateBudgetRange(standaloneBudget);
+  }
 
   return {
     ...(budgetMax ?? standaloneBudget ? { budgetMax: budgetMax ?? standaloneBudget ?? undefined } : {}),
@@ -1526,7 +1626,9 @@ function buildConciergeQueryLabel(intent: ConciergeIntent, fallback: string): st
   const details = [
     intent.occasion ? `${intent.occasion} use` : null,
     intent.size ? intent.size : null,
-    intent.budgetMin && intent.budgetMax
+    intent.isApproximateBudget && intent.budgetTarget
+      ? `around ${formatPrice(intent.budgetTarget)}`
+      : intent.budgetMin && intent.budgetMax
       ? `${formatPrice(intent.budgetMin)}-${formatPrice(intent.budgetMax)}`
       : intent.budgetMax
         ? `under ${formatPrice(intent.budgetMax)}`
@@ -1588,6 +1690,11 @@ function scoreConciergeProduct(
   }
 
   if (price !== null) {
+    if (intent.budgetTarget !== undefined) {
+      const distanceRatio = Math.abs(price - intent.budgetTarget) / intent.budgetTarget;
+      score += Math.max(0, Math.round(28 - distanceRatio * 40));
+    }
+
     if (intent.budgetMin !== undefined && price >= intent.budgetMin) {
       score += 12;
     }
@@ -1800,8 +1907,14 @@ async function buildBotReply(
   }
 
   const asksForRecommendation = includesAnyKeyword(body, RECOMMENDATION_KEYWORDS);
+  const hasBudgetSignal = findFirstMoneyValue(normalizeForSearch(body)) !== null;
+  const hasCartBuildSignal =
+    /\b(?:build|create|make|prepare|stage)\b.*\b(?:cart|reserve)\b/.test(normalizeForSearch(body)) ||
+    /\b(?:cart|reserve)\b.*\b(?:about|approx|approximat\w*|around|match|near|roughly)\b/.test(normalizeForSearch(body));
   const asksAboutProducts =
     asksForRecommendation ||
+    hasBudgetSignal ||
+    hasCartBuildSignal ||
     includesAnyKeyword(body, PRODUCT_KEYWORDS) ||
     includesAnyKeyword(body, PRICE_KEYWORDS) ||
     includesAnyKeyword(body, DRESS_WATCH_KEYWORDS) ||

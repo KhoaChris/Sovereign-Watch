@@ -1220,7 +1220,7 @@ body.operations-pdf-export .support-chat {
 }
 
 .support-chat__send {
-  align-self: end;
+  align-self: center;
   background: rgba(207, 168, 125, 0.16);
   color: var(--color-pearl);
 }

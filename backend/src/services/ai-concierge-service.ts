@@ -34,6 +34,8 @@ type ConciergeOccasion = "collector" | "daily" | "formal" | "sport" | null;
 interface ConciergeIntent {
   budgetMax?: number;
   budgetMin?: number;
+  budgetTarget?: number;
+  isApproximateBudget?: boolean;
   occasion: ConciergeOccasion;
   size?: string;
   wantsAvailableOnly: boolean;
@@ -93,15 +95,48 @@ const PRODUCT_KEYWORDS = [
   "tim",
   "watch",
 ];
-const PRICE_KEYWORDS = ["bao gia", "bao nhieu", "budget", "cost", "gia", "price", "under"];
+const PRICE_KEYWORDS = [
+  "about",
+  "approx",
+  "approximately",
+  "around",
+  "bao gia",
+  "bao nhieu",
+  "budget",
+  "close to",
+  "cost",
+  "gia",
+  "match",
+  "near",
+  "price",
+  "roughly",
+  "under",
+];
 const SHIPPING_KEYWORDS = ["delivery", "giao", "return", "shipping", "ship", "tra hang", "van chuyen"];
 const PAYMENT_KEYWORDS = ["bank", "card", "cod", "payment", "stripe", "thanh toan", "transfer", "wallet"];
 const CART_KEYWORDS = [
   "add to cart",
+  "build cart",
+  "build me a cart",
+  "build reserve cart",
   "cart",
+  "cart around",
+  "cart for",
+  "cart near",
+  "cart that match",
+  "cart that matches",
+  "create cart",
+  "create me a cart",
+  "create reserve cart",
   "gio hang",
+  "make cart",
+  "make me a cart",
+  "prepare cart",
+  "prepare reserve cart",
   "reserve",
   "reserve cart",
+  "stage cart",
+  "stage reserve cart",
   "them vao gio",
   "them vao gio hang",
 ];
@@ -254,6 +289,11 @@ const SEARCH_STOP_WORDS = [
   "add to",
   "add",
   "advise",
+  "about",
+  "approx",
+  "approximately",
+  "approximatelt",
+  "around",
   "available",
   "bao",
   "bao gia",
@@ -262,11 +302,24 @@ const SEARCH_STOP_WORDS = [
   "best piece",
   "best watch",
   "best",
+  "build cart",
+  "build me a cart",
+  "build reserve cart",
+  "build",
   "cart",
+  "cart around",
+  "cart for",
+  "cart near",
+  "cart that matches",
+  "cart that match",
   "cho",
   "clear",
   "co",
   "cost",
+  "create cart",
+  "create me a cart",
+  "create reserve cart",
+  "create",
   "delete",
   "de xuat",
   "dong ho",
@@ -287,13 +340,24 @@ const SEARCH_STOP_WORDS = [
   "gio hang",
   "it",
   "kiem",
+  "make cart",
+  "make me a cart",
+  "make",
+  "me",
+  "match",
+  "matches",
+  "matching",
   "mau",
   "minh",
   "nen chon",
   "nen mua",
+  "near",
   "number",
   "one",
   "option",
+  "prepare cart",
+  "prepare reserve cart",
+  "prepare",
   "price",
   "product",
   "pick for me",
@@ -319,6 +383,9 @@ const SEARCH_STOP_WORDS = [
   "second",
   "same",
   "stage",
+  "stage cart",
+  "stage reserve cart",
+  "roughly",
   "suggested",
   "suggestion",
   "suggest",
@@ -688,7 +755,7 @@ function parseMoneyAmount(rawAmount: string, suffix = ""): number | null {
 
 function findFirstMoneyValue(text: string): number | null {
   const moneyPattern =
-    /(?:usd|\$)?\s*(\d+(?:[,.]\d{3})*|\d+(?:[,.]\d+)?)\s*(k|thousand|nghin|ngan)?\s*(usd|\$)?/gi;
+    /(?:usd|\$)?\s*(\d+(?:[,.]\d{3})*|\d+(?:[,.]\d+)?)\s*(k|thousand|nghin|ngan)?\s*(usd|dollars?|\$)?/gi;
 
   for (const match of text.matchAll(moneyPattern)) {
     const fullMatch = match[0] ?? "";
@@ -712,9 +779,56 @@ function findFirstMoneyValue(text: string): number | null {
   return null;
 }
 
-function extractBudgetIntent(body: string): Pick<ConciergeIntent, "budgetMax" | "budgetMin"> {
+function findContextualBudgetValue(text: string): number | null {
+  const moneyLikePattern =
+    /(\d+(?:[,.]\d{3})*|\d+(?:[,.]\d+)?)\s*(k|thousand|nghin|ngan)?/gi;
+
+  for (const match of text.matchAll(moneyLikePattern)) {
+    const rawAmount = match[1] ?? "";
+    const suffix = match[2] ?? "";
+    const nextText = text.slice((match.index ?? 0) + (match[0]?.length ?? 0), (match.index ?? 0) + (match[0]?.length ?? 0) + 4);
+
+    if (/^\s*mm\b/i.test(nextText)) {
+      continue;
+    }
+
+    const value = parseMoneyAmount(rawAmount, suffix);
+
+    if (value && (suffix || value >= 1_000)) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function isApproximateBudgetRequest(text: string): boolean {
+  return /\b(?:about|approx|approximat\w*|around|close to|khoang|near|roughly|tam|xap xi)\b/.test(text) ||
+    /\b(?:build|create|make|prepare|stage)\b.*\b(?:cart|reserve)\b/.test(text) ||
+    /\b(?:cart|reserve)\b.*\b(?:match|matches|matching)\b/.test(text) ||
+    /\b(?:match|matches|matching)\b.*\b(?:budget|cart|reserve)\b/.test(text);
+}
+
+function buildApproximateBudgetRange(target: number): Pick<
+  ConciergeIntent,
+  "budgetMax" | "budgetMin" | "budgetTarget" | "isApproximateBudget"
+> {
+  const spread = Math.max(3_000, Math.round(target * 0.2));
+
+  return {
+    budgetMax: target + spread,
+    budgetMin: Math.max(1, target - spread),
+    budgetTarget: target,
+    isApproximateBudget: true,
+  };
+}
+
+function extractBudgetIntent(body: string): Pick<
+  ConciergeIntent,
+  "budgetMax" | "budgetMin" | "budgetTarget" | "isApproximateBudget"
+> {
   const text = normalizeForSearch(body);
-  const amountPattern = "(\\d+(?:[,.]\\d{3})*|\\d+(?:[,.]\\d+)?)\\s*(k|thousand|nghin|ngan)?\\s*(?:usd|\\$)?";
+  const amountPattern = "(\\d+(?:[,.]\\d{3})*|\\d+(?:[,.]\\d+)?)\\s*(k|thousand|nghin|ngan)?\\s*(?:usd|dollars?|\\$)?";
   const rangeMatch = text.match(
     new RegExp(`(?:between|from|tu)\\s+(?:usd|\\$)?\\s*${amountPattern}\\s*(?:-|to|and|den)\\s*(?:usd|\\$)?\\s*${amountPattern}(?!\\s*mm)`, "i"),
   );
@@ -739,7 +853,13 @@ function extractBudgetIntent(body: string): Pick<ConciergeIntent, "budgetMax" | 
   );
   const budgetMax = maxMatch ? parseMoneyAmount(maxMatch[1], maxMatch[2]) : null;
   const budgetMin = minMatch ? parseMoneyAmount(minMatch[1], minMatch[2]) : null;
-  const standaloneBudget = !budgetMax && !budgetMin ? findFirstMoneyValue(text) : null;
+  const standaloneBudget = !budgetMax && !budgetMin
+    ? findFirstMoneyValue(text) ?? (isApproximateBudgetRequest(text) ? findContextualBudgetValue(text) : null)
+    : null;
+
+  if (standaloneBudget && isApproximateBudgetRequest(text)) {
+    return buildApproximateBudgetRange(standaloneBudget);
+  }
 
   return {
     ...(budgetMax ?? standaloneBudget ? { budgetMax: budgetMax ?? standaloneBudget ?? undefined } : {}),
@@ -786,7 +906,9 @@ function buildConciergeQueryLabel(intent: ConciergeIntent, fallback: string): st
   const details = [
     intent.occasion ? `${intent.occasion} use` : null,
     intent.size ? intent.size : null,
-    intent.budgetMin && intent.budgetMax
+    intent.isApproximateBudget && intent.budgetTarget
+      ? `around ${formatPrice(intent.budgetTarget)}`
+      : intent.budgetMin && intent.budgetMax
       ? `${formatPrice(intent.budgetMin)}-${formatPrice(intent.budgetMax)}`
       : intent.budgetMax
         ? `under ${formatPrice(intent.budgetMax)}`
@@ -855,6 +977,11 @@ function scoreConciergeProduct(product: ProductRecord, intent: ConciergeIntent):
   }
 
   if (price !== null) {
+    if (intent.budgetTarget !== undefined) {
+      const distanceRatio = Math.abs(price - intent.budgetTarget) / intent.budgetTarget;
+      score += Math.max(0, Math.round(28 - distanceRatio * 40));
+    }
+
     if (intent.budgetMin !== undefined && price >= intent.budgetMin) {
       score += 12;
     }
@@ -926,7 +1053,16 @@ function getAvailableVariantChoices(
         scoreConciergeProduct(right.product, intent) -
         scoreConciergeProduct(left.product, intent);
 
-      return scoreDelta !== 0 ? scoreDelta : left.price - right.price;
+      if (scoreDelta !== 0) {
+        return scoreDelta;
+      }
+
+      if (intent.budgetTarget !== undefined) {
+        return Math.abs(left.price - intent.budgetTarget) -
+          Math.abs(right.price - intent.budgetTarget);
+      }
+
+      return left.price - right.price;
     });
 }
 
@@ -2035,8 +2171,13 @@ async function buildProductReply(message: string): Promise<AiConciergeResponse> 
 function getRecommendationReason(product: ProductRecord, intent: ConciergeIntent): string {
   const price = getLowestProductPrice(product);
   const reasons = [
+    price !== null && intent.isApproximateBudget && intent.budgetTarget !== undefined
+      ? `price proximity to ${formatPrice(intent.budgetTarget)}`
+      : null,
     price !== null && intent.budgetMax !== undefined && price <= intent.budgetMax
-      ? `budget fit under ${formatPrice(intent.budgetMax)}`
+      ? intent.isApproximateBudget && intent.budgetMin !== undefined
+        ? `within the approximate ${formatPrice(intent.budgetMin)}-${formatPrice(intent.budgetMax)} band`
+        : `budget fit under ${formatPrice(intent.budgetMax)}`
       : null,
     price !== null && intent.budgetMin !== undefined && price >= intent.budgetMin
       ? `value positioned above ${formatPrice(intent.budgetMin)}`

@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -794,6 +795,18 @@ export function SupportChatWidget() {
     }
   };
 
+  const handleComposerKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+      if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
+        return;
+      }
+
+      event.preventDefault();
+      event.currentTarget.form?.requestSubmit();
+    },
+    [],
+  );
+
   const handleRequestClearHistory = useCallback(() => {
     if (
       (!isAdminAiMode && !activeConversationId) ||
@@ -1471,6 +1484,7 @@ export function SupportChatWidget() {
                         isCustomerAdminChannelLocked
                       }
                       onChange={(event) => setMessageDraft(event.target.value)}
+                      onKeyDown={handleComposerKeyDown}
                       placeholder={
                         isAdmin
                           ? isAdminAiMode
