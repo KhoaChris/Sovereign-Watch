@@ -11,6 +11,7 @@ import {
   Archive,
   ArchiveRestore,
   Bot,
+  ChevronDown,
   ChevronRight,
   Headphones,
   MessageCircle,
@@ -337,6 +338,7 @@ export function SupportChatWidget() {
     useState<CustomerSupportChannel | null>(null);
   const [conversationSearch, setConversationSearch] = useState("");
   const [messageDraft, setMessageDraft] = useState("");
+  const [customerContextExpanded, setCustomerContextExpanded] = useState(false);
   const [archivingConversation, setArchivingConversation] = useState(false);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [clearingHistory, setClearingHistory] = useState(false);
@@ -410,6 +412,7 @@ export function SupportChatWidget() {
 
   const latestOrder = activeConversationOrders[0] ?? null;
   const activeOrderCount = getActiveOrderCount(activeConversationOrders);
+  const activeConversationContextId = activeConversation?.id ?? null;
   const activeCustomerChannel: CustomerSupportChannel = isAdmin
     ? "admin"
     : customerChannel ?? (adminPresence.online ? "admin" : "ai");
@@ -448,6 +451,10 @@ export function SupportChatWidget() {
         ? "Admin online"
         : "Admin offline"
       : "Concierge ready";
+
+  useEffect(() => {
+    setCustomerContextExpanded(false);
+  }, [activeConversationContextId]);
 
   useEffect(() => {
     let active = true;
@@ -1255,6 +1262,32 @@ export function SupportChatWidget() {
                     ) : null}
                     {isAdmin && activeConversation ? (
                       <button
+                        aria-expanded={customerContextExpanded}
+                        aria-label={
+                          customerContextExpanded
+                            ? "Hide customer context"
+                            : "Show customer context"
+                        }
+                        className={`support-chat__context-toggle ${
+                          customerContextExpanded
+                            ? "support-chat__context-toggle--active"
+                            : ""
+                        }`}
+                        onClick={() =>
+                          setCustomerContextExpanded((expanded) => !expanded)
+                        }
+                        title={
+                          customerContextExpanded
+                            ? "Hide customer context"
+                            : "Show customer context"
+                        }
+                        type="button"
+                      >
+                        <ChevronDown className="support-chat__context-chevron" />
+                      </button>
+                    ) : null}
+                    {isAdmin && activeConversation ? (
+                      <button
                         aria-label={
                           activeConversation.status === "archived"
                             ? "Restore conversation"
@@ -1294,7 +1327,7 @@ export function SupportChatWidget() {
                   </div>
                 </div>
 
-                {isAdmin && activeConversation ? (
+                {isAdmin && activeConversation && customerContextExpanded ? (
                   <section className="support-chat__context" aria-label="Customer context">
                     <div className="support-chat__context-item">
                       <MessageCircle className="support-chat__icon" />
