@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { ArrowLeft, ChevronDown } from "lucide-react";
+import { ArrowLeft, ChevronDown, ExternalLink } from "lucide-react";
 import { Link, Navigate, useLocation } from "react-router-dom";
 
 import { storefrontApi } from "../services/api";
+import { buildTrackingUrl } from "../services/shipping-tracking";
 import { useStorefront } from "../storefront/storefront-context";
 import {
   formatProductSize,
@@ -375,6 +376,10 @@ function MemberOrderCard({
     order.shipping?.trackingNumber,
     "Pending dispatch",
   );
+  const trackingUrl = buildTrackingUrl(
+    order.shipping?.courierName,
+    order.shipping?.trackingNumber,
+  );
   const shippingSummary = splitShippingAddress(order.shippingAddress);
   const itemCountLabel = `${order.items.length} piece${
     order.items.length === 1 ? "" : "s"
@@ -474,7 +479,21 @@ function MemberOrderCard({
           </div>
           <div className="member-orders__meta-item">
             <span>Tracking</span>
-            <strong>{trackingLabel}</strong>
+            <strong>
+              {trackingUrl ? (
+                <a
+                  className="member-orders__tracking-link"
+                  href={trackingUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  {trackingLabel}
+                  <ExternalLink size={14} />
+                </a>
+              ) : (
+                trackingLabel
+              )}
+            </strong>
           </div>
         </div>
 

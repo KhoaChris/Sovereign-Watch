@@ -744,6 +744,25 @@
   white-space: nowrap;
 }
 
+.member-orders__tracking-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  color: inherit;
+  text-decoration: none;
+  transition: color var(--motion-fast);
+}
+
+.member-orders__tracking-link svg {
+  flex: 0 0 auto;
+  color: var(--color-champagne-bright);
+}
+
+.member-orders__tracking-link:hover {
+  color: var(--color-champagne-bright);
+}
+
 .member-orders__address {
   display: grid;
   gap: 0.35rem;
@@ -1258,6 +1277,215 @@
 .operations-grid {
   display: grid;
   gap: 1rem;
+}
+
+.operations-skeleton {
+  display: grid;
+  gap: 1rem;
+}
+
+.operations-skeleton__panel {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+  padding: clamp(1.1rem, 3vw, 1.5rem);
+  border: 1px solid var(--operations-border);
+  border-radius: 1.6rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.052), transparent),
+    rgba(10, 14, 22, 0.84);
+  box-shadow: var(--shadow-soft);
+  overflow: hidden;
+}
+
+.operations-skeleton__head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.operations-skeleton__head > div {
+  display: grid;
+  gap: 0.65rem;
+  width: min(26rem, 72%);
+  min-width: 0;
+}
+
+.operations-skeleton__bar,
+.operations-skeleton__chart-column {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04)),
+    rgba(255, 255, 255, 0.045);
+  background-size: 220% 100%;
+  animation: operations-skeleton-shimmer 1.65s ease-in-out infinite;
+}
+
+.operations-skeleton__bar--eyebrow {
+  width: 8.2rem;
+  height: 0.64rem;
+}
+
+.operations-skeleton__bar--title {
+  width: min(100%, 18rem);
+  height: 2.15rem;
+  border-radius: 0.7rem;
+}
+
+.operations-skeleton__bar--heading {
+  width: min(100%, 20rem);
+  height: 1.65rem;
+  border-radius: 0.6rem;
+}
+
+.operations-skeleton__bar--meta {
+  width: 8rem;
+  height: 0.72rem;
+}
+
+.operations-skeleton__bar--small {
+  width: 7rem;
+  height: 0.65rem;
+}
+
+.operations-skeleton__bar--value {
+  width: 46%;
+  height: 2.15rem;
+  border-radius: 0.65rem;
+}
+
+.operations-skeleton__bar--copy {
+  width: 82%;
+  height: 0.8rem;
+}
+
+.operations-skeleton__bar--trend {
+  width: 54%;
+  height: 0.7rem;
+}
+
+.operations-skeleton__bar--search {
+  width: 100%;
+  height: 3rem;
+  border-radius: 1rem;
+}
+
+.operations-skeleton__bar--chip {
+  width: 7.6rem;
+  height: 2.7rem;
+  border-radius: 999px;
+}
+
+.operations-skeleton__bar--code {
+  width: 9rem;
+  height: 0.62rem;
+}
+
+.operations-skeleton__bar--name {
+  width: min(62%, 13rem);
+  height: 1.65rem;
+  border-radius: 0.55rem;
+}
+
+.operations-skeleton__bar--wide {
+  width: 100%;
+  height: 4.5rem;
+  border-radius: 1rem;
+}
+
+.operations-skeleton__metric-grid,
+.operations-skeleton__toolbar,
+.operations-skeleton__rows {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.operations-skeleton__metric {
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
+  padding: 1.1rem;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 1.25rem;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.operations-skeleton__chart {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  align-items: end;
+  gap: 0.8rem;
+  min-height: 15rem;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 1.25rem;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px) 0 0 / 100% 33.333%,
+    rgba(255, 255, 255, 0.018);
+}
+
+.operations-skeleton__chart-column {
+  width: 100%;
+  min-height: 2.5rem;
+  border-radius: 999px 999px 0.4rem 0.4rem;
+  background:
+    linear-gradient(180deg, rgba(215, 177, 126, 0.34), rgba(109, 143, 255, 0.12)),
+    rgba(255, 255, 255, 0.045);
+}
+
+.operations-skeleton__chart-column:nth-child(1) {
+  height: 34%;
+}
+
+.operations-skeleton__chart-column:nth-child(2) {
+  height: 46%;
+}
+
+.operations-skeleton__chart-column:nth-child(3) {
+  height: 38%;
+}
+
+.operations-skeleton__chart-column:nth-child(4) {
+  height: 64%;
+}
+
+.operations-skeleton__chart-column:nth-child(5) {
+  height: 82%;
+}
+
+.operations-skeleton__chart-column:nth-child(6) {
+  height: 48%;
+}
+
+.operations-skeleton__toolbar {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+}
+
+.operations-skeleton__row {
+  display: grid;
+  gap: 0.7rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.065);
+  border-radius: 1.25rem;
+  background:
+    linear-gradient(135deg, rgba(215, 177, 126, 0.035), transparent 40%),
+    rgba(255, 255, 255, 0.02);
+}
+
+@keyframes operations-skeleton-shimmer {
+  0% {
+    background-position: 120% 0;
+  }
+
+  100% {
+    background-position: -120% 0;
+  }
 }
 
 .operations-panel {
@@ -2717,6 +2945,37 @@
   border-radius: 0.72rem;
   background: rgba(255, 255, 255, 0.024);
   font-size: 0.82rem;
+}
+
+.operations-order-card__manual-courier {
+  margin-top: 0.42rem;
+}
+
+.operations-order-card__tracking-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: max-content;
+  max-width: 100%;
+  margin-top: 0.08rem;
+  color: var(--color-champagne-bright);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+  text-decoration: none;
+  text-transform: uppercase;
+  transition:
+    color var(--motion-fast),
+    opacity var(--motion-fast);
+}
+
+.operations-order-card__tracking-link svg {
+  flex: 0 0 auto;
+}
+
+.operations-order-card__tracking-link:hover {
+  color: var(--color-pearl);
 }
 
 .operations-field {
@@ -4537,6 +4796,19 @@
     grid-template-columns: minmax(0, 1.45fr) minmax(19rem, 0.95fr);
   }
 
+  .operations-skeleton {
+    grid-template-columns: minmax(0, 1.45fr) minmax(19rem, 0.95fr);
+  }
+
+  .operations-skeleton__panel--metrics,
+  .operations-skeleton__panel--ledger {
+    grid-column: 1 / -1;
+  }
+
+  .operations-skeleton__metric-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
   .operations-metrics-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
@@ -4775,6 +5047,18 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .operations-skeleton__metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .operations-skeleton__toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .operations-skeleton__toolbar .operations-skeleton__bar--chip:last-child {
+    display: none;
+  }
+
   .member-orders__card,
   .member-orders__skeleton-card {
     padding: 1.15rem;
@@ -4839,6 +5123,69 @@
     font-size: 0.56rem;
     letter-spacing: 0.16em;
     scroll-snap-align: start;
+  }
+
+  .operations-skeleton {
+    gap: 0.72rem;
+  }
+
+  .operations-skeleton__panel {
+    gap: 0.82rem;
+    padding: 0.9rem;
+    border-radius: 1rem;
+  }
+
+  .operations-skeleton__head {
+    display: grid;
+    gap: 0.7rem;
+  }
+
+  .operations-skeleton__head > div {
+    width: 100%;
+  }
+
+  .operations-skeleton__bar--title {
+    height: 1.75rem;
+  }
+
+  .operations-skeleton__bar--meta {
+    width: 7rem;
+  }
+
+  .operations-skeleton__metric-grid {
+    gap: 0.6rem;
+  }
+
+  .operations-skeleton__metric {
+    padding: 0.9rem;
+    border-radius: 0.95rem;
+  }
+
+  .operations-skeleton__toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .operations-skeleton__toolbar .operations-skeleton__bar--chip {
+    display: none;
+  }
+
+  .operations-skeleton__chart {
+    min-height: 10rem;
+    gap: 0.45rem;
+    padding: 0.75rem;
+    border-radius: 0.95rem;
+  }
+
+  .operations-skeleton__rows {
+    gap: 0.6rem;
+  }
+
+  .operations-skeleton__rows .operations-skeleton__row:nth-child(n + 3) {
+    display: none;
+  }
+
+  .operations-skeleton__bar--wide {
+    height: 3.4rem;
   }
 
   .operations-sidebar {
@@ -5632,6 +5979,21 @@
     padding: 0.52rem 0.62rem;
     border-radius: 0.62rem;
     font-size: 0.72rem;
+  }
+
+  .operations-order-card__manual-courier {
+    margin-top: 0.28rem;
+  }
+
+  .operations-order-card__tracking-link {
+    gap: 0.24rem;
+    font-size: 0.54rem;
+    letter-spacing: 0.08em;
+  }
+
+  .operations-order-card__tracking-link svg {
+    width: 0.72rem;
+    height: 0.72rem;
   }
 
   .operations-order-card__save {

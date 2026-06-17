@@ -16,6 +16,7 @@ import {
   ChevronDown,
   CirclePlus,
   Download,
+  ExternalLink,
   FileDown,
   LayoutDashboard,
   Package,
@@ -42,6 +43,13 @@ import {
   removeAdminCatalogDraft,
 } from "../services/admin-catalog-drafts";
 import { storefrontApi } from "../services/api";
+import {
+  COURIER_OPTIONS,
+  CUSTOM_COURIER_VALUE,
+  buildTrackingUrl,
+  getCourierSelectValue,
+  isKnownCourierName,
+} from "../services/shipping-tracking";
 import { useStorefront } from "../storefront/storefront-context";
 import {
   formatProductSize,
@@ -1531,6 +1539,77 @@ function formatTrendLabel(change: number | null): string {
   return `${sign}${change.toFixed(1)}% vs last month`;
 }
 
+function OperationsDashboardSkeleton() {
+  return (
+    <div
+      aria-busy="true"
+      aria-label="Loading operations dashboard"
+      className="operations-skeleton"
+      role="status"
+    >
+      <section className="operations-skeleton__panel operations-skeleton__panel--metrics">
+        <div className="operations-skeleton__head">
+          <div>
+            <span className="operations-skeleton__bar operations-skeleton__bar--eyebrow" />
+            <span className="operations-skeleton__bar operations-skeleton__bar--title" />
+          </div>
+          <span className="operations-skeleton__bar operations-skeleton__bar--meta" />
+        </div>
+        <div className="operations-skeleton__metric-grid">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div className="operations-skeleton__metric" key={index}>
+              <span className="operations-skeleton__bar operations-skeleton__bar--small" />
+              <span className="operations-skeleton__bar operations-skeleton__bar--value" />
+              <span className="operations-skeleton__bar operations-skeleton__bar--copy" />
+              <span className="operations-skeleton__bar operations-skeleton__bar--trend" />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="operations-skeleton__panel operations-skeleton__panel--chart">
+        <div className="operations-skeleton__head">
+          <div>
+            <span className="operations-skeleton__bar operations-skeleton__bar--eyebrow" />
+            <span className="operations-skeleton__bar operations-skeleton__bar--heading" />
+          </div>
+          <span className="operations-skeleton__bar operations-skeleton__bar--meta" />
+        </div>
+        <div className="operations-skeleton__chart">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <span className="operations-skeleton__chart-column" key={index} />
+          ))}
+        </div>
+      </section>
+
+      <section className="operations-skeleton__panel operations-skeleton__panel--ledger">
+        <div className="operations-skeleton__head">
+          <div>
+            <span className="operations-skeleton__bar operations-skeleton__bar--eyebrow" />
+            <span className="operations-skeleton__bar operations-skeleton__bar--heading" />
+          </div>
+          <span className="operations-skeleton__bar operations-skeleton__bar--meta" />
+        </div>
+        <div className="operations-skeleton__toolbar">
+          <span className="operations-skeleton__bar operations-skeleton__bar--search" />
+          <span className="operations-skeleton__bar operations-skeleton__bar--chip" />
+          <span className="operations-skeleton__bar operations-skeleton__bar--chip" />
+        </div>
+        <div className="operations-skeleton__rows">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div className="operations-skeleton__row" key={index}>
+              <span className="operations-skeleton__bar operations-skeleton__bar--code" />
+              <span className="operations-skeleton__bar operations-skeleton__bar--name" />
+              <span className="operations-skeleton__bar operations-skeleton__bar--copy" />
+              <span className="operations-skeleton__bar operations-skeleton__bar--wide" />
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function AdminMetricCard({
   detail,
   icon: Icon,
@@ -2426,7 +2505,23 @@ export function OperationsPage({
     setError(null);
 
     try {
-      const updatedOrder = await storefrontApi.updateOrder(orderId, draft);
+      const courierName = draft.courierName?.trim();
+      const trackingNumber = draft.trackingNumber?.trim();
+      const payload: UpdateOrderPayload = {
+        paymentStatus: draft.paymentStatus,
+        shippingStatus: draft.shippingStatus,
+        status: draft.status,
+      };
+
+      if (courierName) {
+        payload.courierName = courierName;
+      }
+
+      if (trackingNumber) {
+        payload.trackingNumber = trackingNumber;
+      }
+
+      const updatedOrder = await storefrontApi.updateOrder(orderId, payload);
 
       if (!updatedOrder) {
         throw new Error("Order not found.");
@@ -3060,9 +3155,7 @@ export function OperationsPage({
           {error ? <p className="orders-page__error">{error}</p> : null}
 
           {loading ? (
-            <div className="orders-page__empty-state">
-              Loading the operations dashboard.
-            </div>
+            <OperationsDashboardSkeleton />
           ) : (
             <div className="operations-grid">
               <section className="operations-panel operations-panel--metrics">
@@ -3248,6 +3341,13 @@ export function OperationsPage({
                       const recipientInitial =
                         shippingSummary.recipient.trim().slice(0, 1).toUpperCase() ||
                         "W";
+                      const courierSelectValue = getCourierSelectValue(
+                        draft.courierName,
+                      );
+                      const trackingUrl = buildTrackingUrl(
+                        draft.courierName,
+                        draft.trackingNumber,
+                      );
 
                       return (
                         <motion.article
@@ -3432,22 +3532,63 @@ export function OperationsPage({
 
                               <label className="operations-field">
                                 <span>Courier</span>
-                                <input
+                                <select
                                   onChange={(event) =>
-                                    setDrafts((current) => ({
-                                      ...current,
-                                      [order.id]: {
-                                        ...getDraft(order),
-                                        courierName: event.target.value,
-                                      },
-                                    }))
+                                    setDrafts((current) => {
+                                      const currentDraft = getDraft(order);
+                                      const selectedCourier = event.target.value;
+                                      const nextCourierName =
+                                        selectedCourier === CUSTOM_COURIER_VALUE
+                                          ? isKnownCourierName(
+                                              currentDraft.courierName,
+                                            )
+                                            ? ""
+                                            : currentDraft.courierName ?? ""
+                                          : selectedCourier;
+
+                                      return {
+                                        ...current,
+                                        [order.id]: {
+                                          ...currentDraft,
+                                          courierName: nextCourierName,
+                                        },
+                                      };
+                                    })
                                   }
-                                  placeholder="Courier name"
-                                  value={draft.courierName ?? ""}
-                                />
+                                  value={courierSelectValue}
+                                >
+                                  <option value="">Assign courier</option>
+                                  {COURIER_OPTIONS.map((option) => (
+                                    <option
+                                      key={option.value}
+                                      value={option.value}
+                                    >
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                  <option value={CUSTOM_COURIER_VALUE}>
+                                    Custom courier
+                                  </option>
+                                </select>
+                                {courierSelectValue === CUSTOM_COURIER_VALUE ? (
+                                  <input
+                                    className="operations-order-card__manual-courier"
+                                    onChange={(event) =>
+                                      setDrafts((current) => ({
+                                        ...current,
+                                        [order.id]: {
+                                          ...getDraft(order),
+                                          courierName: event.target.value,
+                                        },
+                                      }))
+                                    }
+                                    placeholder="Courier name"
+                                    value={draft.courierName ?? ""}
+                                  />
+                                ) : null}
                               </label>
 
-                              <label className="operations-field">
+                              <div className="operations-field">
                                 <span>Tracking</span>
                                 <input
                                   onChange={(event) =>
@@ -3462,7 +3603,18 @@ export function OperationsPage({
                                   placeholder="Tracking number"
                                   value={draft.trackingNumber ?? ""}
                                 />
-                              </label>
+                                {trackingUrl ? (
+                                  <a
+                                    className="operations-order-card__tracking-link"
+                                    href={trackingUrl}
+                                    rel="noreferrer"
+                                    target="_blank"
+                                  >
+                                    <ExternalLink size={13} />
+                                    Track shipment
+                                  </a>
+                                ) : null}
+                              </div>
 
                               <button
                                 className="orders-page__button orders-page__button--primary operations-order-card__save"
