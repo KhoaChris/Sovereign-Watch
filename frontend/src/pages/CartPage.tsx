@@ -37,7 +37,7 @@ import {
   UserRound,
   Wallet,
 } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 
 import { useFeedback } from "../feedback/feedback-context";
 import { storefrontApi } from "../services/api";
@@ -387,6 +387,7 @@ export function CartPage() {
     cart,
     checkoutCart,
     commerceLoading,
+    isAdmin,
     isAuthenticated,
     openAuthModal,
     refreshSession,
@@ -777,6 +778,10 @@ export function CartPage() {
         </div>
       </div>
     );
+  }
+
+  if (isAdmin) {
+    return <Navigate replace to="/operations" />;
   }
 
   if (!isAuthenticated) {

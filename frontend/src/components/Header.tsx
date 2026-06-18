@@ -134,6 +134,7 @@ export function Header() {
 
   const headerIsDense = !isHome || isScrolled;
   const memberMark = getMemberMark(user?.fullName, user?.email);
+  const showMemberCommerce = !isAdmin;
 
   const closeDrawer = () => {
     setMenuOpen(false);
@@ -254,7 +255,7 @@ export function Header() {
             ) : null}
 
             <div className="site-header__icon-row">
-              {isAuthenticated ? (
+              {isAuthenticated && showMemberCommerce ? (
                 <NavLink
                   aria-label="Favorites"
                   className={({ isActive }) =>
@@ -272,7 +273,7 @@ export function Header() {
                     </span>
                   ) : null}
                 </NavLink>
-              ) : (
+              ) : !isAuthenticated ? (
                 <button
                   aria-label="Sign in to access favorites"
                   className="site-header__icon-button"
@@ -281,9 +282,9 @@ export function Header() {
                 >
                   <Heart className="site-header__icon" />
                 </button>
-              )}
+              ) : null}
 
-              {isAuthenticated ? (
+              {isAuthenticated && showMemberCommerce ? (
                 <NavLink
                   aria-label="Cart"
                   className={({ isActive }) =>
@@ -301,7 +302,7 @@ export function Header() {
                     </span>
                   ) : null}
                 </NavLink>
-              ) : (
+              ) : !isAuthenticated ? (
                 <button
                   aria-label="Sign in to access your cart"
                   className="site-header__icon-button"
@@ -310,7 +311,7 @@ export function Header() {
                 >
                   <ShoppingBag className="site-header__icon" />
                 </button>
-              )}
+              ) : null}
 
               <button
                 aria-label={isAuthenticated ? "Open account" : "Sign in"}
@@ -390,12 +391,16 @@ export function Header() {
               <div className="site-header__drawer-intro">
                 <div className="site-header__drawer-pills" aria-hidden="true">
                   <span className="site-header__drawer-pill">{roleLabel}</span>
-                  <span className="site-header__drawer-pill">
-                    Favorites {formatBadgeCount(favoriteCount)}
-                  </span>
-                  <span className="site-header__drawer-pill">
-                    Cart {formatBadgeCount(cartCount)}
-                  </span>
+                  {showMemberCommerce ? (
+                    <>
+                      <span className="site-header__drawer-pill">
+                        Favorites {formatBadgeCount(favoriteCount)}
+                      </span>
+                      <span className="site-header__drawer-pill">
+                        Cart {formatBadgeCount(cartCount)}
+                      </span>
+                    </>
+                  ) : null}
                 </div>
               </div>
 
@@ -441,63 +446,67 @@ export function Header() {
                   className="site-header__drawer-nav"
                   aria-label="Member navigation"
                 >
-                  <NavLink
-                    className={({ isActive }) =>
-                      isActive
-                        ? "site-header__drawer-link site-header__drawer-link--active"
-                        : "site-header__drawer-link"
-                    }
-                    onClick={(event) => {
-                      if (!isAuthenticated) {
-                        event.preventDefault();
-                        openProtectedDestination("/favorites");
-                      } else {
-                        closeDrawer();
-                      }
-                    }}
-                    to={isAuthenticated ? "/favorites" : "#"}
-                  >
-                    <div className="site-header__drawer-link-copy">
-                      <span className="site-header__drawer-link-title">
-                        Favorites
-                      </span>
-                      <span className="site-header__drawer-link-caption">
-                        Saved references
-                      </span>
-                    </div>
-                    <span className="site-header__drawer-link-trailing site-header__drawer-link-trailing--value">
-                      {formatBadgeCount(favoriteCount)}
-                    </span>
-                  </NavLink>
+                  {showMemberCommerce ? (
+                    <>
+                      <NavLink
+                        className={({ isActive }) =>
+                          isActive
+                            ? "site-header__drawer-link site-header__drawer-link--active"
+                            : "site-header__drawer-link"
+                        }
+                        onClick={(event) => {
+                          if (!isAuthenticated) {
+                            event.preventDefault();
+                            openProtectedDestination("/favorites");
+                          } else {
+                            closeDrawer();
+                          }
+                        }}
+                        to={isAuthenticated ? "/favorites" : "#"}
+                      >
+                        <div className="site-header__drawer-link-copy">
+                          <span className="site-header__drawer-link-title">
+                            Favorites
+                          </span>
+                          <span className="site-header__drawer-link-caption">
+                            Saved references
+                          </span>
+                        </div>
+                        <span className="site-header__drawer-link-trailing site-header__drawer-link-trailing--value">
+                          {formatBadgeCount(favoriteCount)}
+                        </span>
+                      </NavLink>
 
-                  <NavLink
-                    className={({ isActive }) =>
-                      isActive
-                        ? "site-header__drawer-link site-header__drawer-link--active"
-                        : "site-header__drawer-link"
-                    }
-                    onClick={(event) => {
-                      if (!isAuthenticated) {
-                        event.preventDefault();
-                        openProtectedDestination("/cart");
-                      } else {
-                        closeDrawer();
-                      }
-                    }}
-                    to={isAuthenticated ? "/cart" : "#"}
-                  >
-                    <div className="site-header__drawer-link-copy">
-                      <span className="site-header__drawer-link-title">
-                        Cart
-                      </span>
-                      <span className="site-header__drawer-link-caption">
-                        Reserve desk
-                      </span>
-                    </div>
-                    <span className="site-header__drawer-link-trailing site-header__drawer-link-trailing--value">
-                      {formatBadgeCount(cartCount)}
-                    </span>
-                  </NavLink>
+                      <NavLink
+                        className={({ isActive }) =>
+                          isActive
+                            ? "site-header__drawer-link site-header__drawer-link--active"
+                            : "site-header__drawer-link"
+                        }
+                        onClick={(event) => {
+                          if (!isAuthenticated) {
+                            event.preventDefault();
+                            openProtectedDestination("/cart");
+                          } else {
+                            closeDrawer();
+                          }
+                        }}
+                        to={isAuthenticated ? "/cart" : "#"}
+                      >
+                        <div className="site-header__drawer-link-copy">
+                          <span className="site-header__drawer-link-title">
+                            Cart
+                          </span>
+                          <span className="site-header__drawer-link-caption">
+                            Reserve desk
+                          </span>
+                        </div>
+                        <span className="site-header__drawer-link-trailing site-header__drawer-link-trailing--value">
+                          {formatBadgeCount(cartCount)}
+                        </span>
+                      </NavLink>
+                    </>
+                  ) : null}
 
                   <button
                     className="site-header__drawer-link site-header__drawer-link--button"

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { ArrowLeft, ArrowRight, Heart, LoaderCircle } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 
 import { useFeedback } from "../feedback/feedback-context";
 import { useStorefront } from "../storefront/storefront-context";
@@ -76,6 +76,7 @@ export function FavoritesPage() {
     authLoading,
     commerceLoading,
     favorites,
+    isAdmin,
     isAuthenticated,
     toggleFavorite,
     user,
@@ -142,6 +143,10 @@ export function FavoritesPage() {
         </div>
       </div>
     );
+  }
+
+  if (isAdmin) {
+    return <Navigate replace to="/operations" />;
   }
 
   return (

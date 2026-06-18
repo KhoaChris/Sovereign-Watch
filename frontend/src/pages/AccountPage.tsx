@@ -206,23 +206,41 @@ function AccountProfileForm({
       meta: `${completedFields} of 3 core details ready`,
       value: `${percentage}%`,
     },
-    {
-      label: "Favorites saved",
-      meta: "Private references kept in view",
-      value: String(favoriteCount),
-    },
-    {
-      label: "Reserve cart",
-      meta: "Pieces staged for checkout",
-      value: String(cartCount),
-    },
-    {
-      label: isAdmin ? "Role" : "Member since",
-      meta: isAdmin
-        ? "Operational controls enabled"
-        : "Quietly retained across sessions",
-      value: isAdmin ? "Admin" : formatMemberSince(user.createdAt),
-    },
+    ...(isAdmin
+      ? [
+          {
+            label: "Operations access",
+            meta: "Dashboard, ledger, and catalog controls",
+            value: "Live",
+          },
+          {
+            label: "Support desk",
+            meta: "Customer conversations and Store AI access",
+            value: "Active",
+          },
+          {
+            label: "Role",
+            meta: "Operational controls enabled",
+            value: "Admin",
+          },
+        ]
+      : [
+          {
+            label: "Favorites saved",
+            meta: "Private references kept in view",
+            value: String(favoriteCount),
+          },
+          {
+            label: "Reserve cart",
+            meta: "Pieces staged for checkout",
+            value: String(cartCount),
+          },
+          {
+            label: "Member since",
+            meta: "Quietly retained across sessions",
+            value: formatMemberSince(user.createdAt),
+          },
+        ]),
   ];
 
   const summaryMetrics = [
@@ -703,23 +721,27 @@ function AccountProfileForm({
             </div>
 
             <div className="account-page__quick-links">
-              <Link className="account-page__quick-link" to="/favorites">
-                <Heart className="account-page__quick-icon" />
-                <div>
-                  <strong>Favorites</strong>
-                  <span>{favoriteCount} saved references</span>
-                </div>
-                <ArrowRight className="account-page__quick-arrow" />
-              </Link>
+              {!isAdmin ? (
+                <>
+                  <Link className="account-page__quick-link" to="/favorites">
+                    <Heart className="account-page__quick-icon" />
+                    <div>
+                      <strong>Favorites</strong>
+                      <span>{favoriteCount} saved references</span>
+                    </div>
+                    <ArrowRight className="account-page__quick-arrow" />
+                  </Link>
 
-              <Link className="account-page__quick-link" to="/cart">
-                <ShoppingBag className="account-page__quick-icon" />
-                <div>
-                  <strong>Reserve cart</strong>
-                  <span>{cartCount} pieces staged for checkout</span>
-                </div>
-                <ArrowRight className="account-page__quick-arrow" />
-              </Link>
+                  <Link className="account-page__quick-link" to="/cart">
+                    <ShoppingBag className="account-page__quick-icon" />
+                    <div>
+                      <strong>Reserve cart</strong>
+                      <span>{cartCount} pieces staged for checkout</span>
+                    </div>
+                    <ArrowRight className="account-page__quick-arrow" />
+                  </Link>
+                </>
+              ) : null}
 
               <Link
                 className="account-page__quick-link"
@@ -736,6 +758,20 @@ function AccountProfileForm({
                 </div>
                 <ArrowRight className="account-page__quick-arrow" />
               </Link>
+
+              {isAdmin ? (
+                <Link
+                  className="account-page__quick-link"
+                  to="/operations#operations-products"
+                >
+                  <Package className="account-page__quick-icon" />
+                  <div>
+                    <strong>Catalog manager</strong>
+                    <span>Create, edit, and audit product records</span>
+                  </div>
+                  <ArrowRight className="account-page__quick-arrow" />
+                </Link>
+              ) : null}
 
               {isAdmin ? (
                 <div className="account-page__quick-link account-page__quick-link--static">

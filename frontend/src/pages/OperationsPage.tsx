@@ -3454,7 +3454,7 @@ export function OperationsPage({
                             </div>
 
                             <div className="operations-order-card__controls">
-                              <label className="operations-field">
+                              <label className="operations-field operations-order-card__field operations-order-card__field--status">
                                 <span>Status</span>
                                 <select
                                   onChange={(event) =>
@@ -3476,7 +3476,7 @@ export function OperationsPage({
                                 </select>
                               </label>
 
-                              <label className="operations-field">
+                              <label className="operations-field operations-order-card__field operations-order-card__field--payment">
                                 <span>Payment</span>
                                 <select
                                   onChange={(event) =>
@@ -3503,7 +3503,7 @@ export function OperationsPage({
                                 </select>
                               </label>
 
-                              <label className="operations-field">
+                              <label className="operations-field operations-order-card__field operations-order-card__field--shipping">
                                 <span>Shipping</span>
                                 <select
                                   onChange={(event) =>
@@ -3530,7 +3530,7 @@ export function OperationsPage({
                                 </select>
                               </label>
 
-                              <label className="operations-field">
+                              <label className="operations-field operations-order-card__field operations-order-card__field--courier">
                                 <span>Courier</span>
                                 <select
                                   onChange={(event) =>
@@ -3588,7 +3588,7 @@ export function OperationsPage({
                                 ) : null}
                               </label>
 
-                              <div className="operations-field">
+                              <div className="operations-field operations-order-card__field operations-order-card__field--tracking">
                                 <span>Tracking</span>
                                 <input
                                   onChange={(event) =>
@@ -3616,16 +3616,20 @@ export function OperationsPage({
                                 ) : null}
                               </div>
 
-                              <button
-                                className="orders-page__button orders-page__button--primary operations-order-card__save"
-                                disabled={pendingOrderId === order.id}
-                                onClick={() => {
-                                  void handleAdminUpdate(order.id, draft);
-                                }}
-                                type="button"
-                              >
-                                {pendingOrderId === order.id ? "Saving" : "Save"}
-                              </button>
+                              <div className="operations-order-card__action">
+                                <button
+                                  className="orders-page__button orders-page__button--primary operations-order-card__save"
+                                  disabled={pendingOrderId === order.id}
+                                  onClick={() => {
+                                    void handleAdminUpdate(order.id, draft);
+                                  }}
+                                  type="button"
+                                >
+                                  {pendingOrderId === order.id
+                                    ? "Saving"
+                                    : "Save"}
+                                </button>
+                              </div>
                             </div>
                           </div>
                         </motion.article>
