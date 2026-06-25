@@ -99,15 +99,102 @@ body::after {
 }
 
 .route-fallback {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 60svh;
-  padding-inline: 1.25rem;
-  color: var(--color-smoke);
-  font-size: 0.75rem;
-  letter-spacing: 0.34em;
-  text-transform: uppercase;
+  display: grid;
+  min-height: min(72svh, 46rem);
+  padding: clamp(7rem, 12vw, 11rem) clamp(1.25rem, 5vw, 5rem) 4rem;
+  place-items: center;
+}
+
+.route-fallback__shell {
+  width: min(100%, 76rem);
+  padding: clamp(1.25rem, 4vw, 2.5rem) 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: grid;
+  gap: clamp(1.5rem, 4vw, 3rem);
+}
+
+.route-fallback__hero {
+  display: grid;
+  max-width: 42rem;
+  gap: 0.8rem;
+}
+
+.route-fallback__line,
+.route-fallback__tile {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--color-panel-line);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.07), transparent),
+    rgba(18, 20, 26, 0.72);
+}
+
+.route-fallback__line::after,
+.route-fallback__tile::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-120%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(235, 197, 154, 0.16),
+    transparent
+  );
+  animation: shimmer 1.35s var(--motion-medium) infinite;
+}
+
+.route-fallback__line {
+  border-radius: 999px;
+}
+
+.route-fallback__line--eyebrow {
+  width: min(12rem, 44vw);
+  height: 0.7rem;
+}
+
+.route-fallback__line--title {
+  width: min(32rem, 82vw);
+  height: clamp(3.4rem, 8vw, 5.8rem);
+  border-radius: 1rem;
+}
+
+.route-fallback__line--copy {
+  width: min(26rem, 72vw);
+  height: 1.1rem;
+}
+
+.route-fallback__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(0.8rem, 2vw, 1.1rem);
+}
+
+.route-fallback__tile {
+  min-height: clamp(5.8rem, 12vw, 8rem);
+  border-radius: var(--radius-card);
+}
+
+.route-fallback__tile--wide {
+  background:
+    linear-gradient(135deg, rgba(235, 197, 154, 0.08), transparent),
+    rgba(18, 20, 26, 0.72);
+}
+
+@media (width <= 680px) {
+  .route-fallback {
+    min-height: 64svh;
+    padding-block: 6rem 3rem;
+  }
+
+  .route-fallback__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .route-fallback__tile {
+    min-height: 4.8rem;
+  }
 }
 
 a {

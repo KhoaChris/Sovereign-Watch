@@ -81,6 +81,33 @@ function resolveApiRequestUrl(path: string, baseUrl = api.defaults.baseURL ?? ""
   return `${baseUrl.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
 }
 
+function formatApiErrorDetails(details: unknown): string {
+  if (!Array.isArray(details)) {
+    return "";
+  }
+
+  const normalizedDetails = Array.from(
+    new Set(
+      details
+        .filter((detail): detail is string => typeof detail === "string")
+        .map((detail) => detail.trim())
+        .filter(Boolean),
+    ),
+  ).slice(0, 3);
+
+  if (normalizedDetails.length === 0) {
+    return "";
+  }
+
+  const detailText = normalizedDetails.join(" ");
+
+  if (detailText.length <= 220) {
+    return detailText;
+  }
+
+  return `${detailText.slice(0, 217)}...`;
+}
+
 function toApiRequestError(error: unknown, path: string): Error {
   if (!axios.isAxiosError(error)) {
     return error instanceof Error
@@ -93,12 +120,8 @@ function toApiRequestError(error: unknown, path: string): Error {
     | undefined;
 
   if (typeof responseData?.error === "string") {
-    const details = Array.isArray(responseData.details)
-      ? responseData.details.filter(
-          (detail): detail is string => typeof detail === "string",
-        )
-      : [];
-    const detailSuffix = details.length > 0 ? ` ${details.join(" ")}` : "";
+    const details = formatApiErrorDetails(responseData.details);
+    const detailSuffix = details ? ` ${details}` : "";
 
     return new Error(`${responseData.error}${detailSuffix}`);
   }

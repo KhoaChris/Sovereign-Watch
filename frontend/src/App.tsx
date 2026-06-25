@@ -63,7 +63,26 @@ const SupportChatWidget = lazy(async () => {
 });
 
 function RouteFallback() {
-  return <div className="route-fallback">Loading watchroom</div>;
+  return (
+    <div
+      aria-label="Loading Watchroom"
+      className="route-fallback"
+      role="status"
+    >
+      <div className="route-fallback__shell">
+        <div className="route-fallback__hero">
+          <span className="route-fallback__line route-fallback__line--eyebrow" />
+          <span className="route-fallback__line route-fallback__line--title" />
+          <span className="route-fallback__line route-fallback__line--copy" />
+        </div>
+        <div className="route-fallback__grid">
+          <span className="route-fallback__tile" />
+          <span className="route-fallback__tile" />
+          <span className="route-fallback__tile route-fallback__tile--wide" />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function App() {

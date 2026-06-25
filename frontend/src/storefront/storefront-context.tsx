@@ -306,6 +306,42 @@ function createEmptyCartRecord(userId: string): CartRecord {
   };
 }
 
+interface CommerceRecords {
+  cart: CartRecord;
+  favorites: FavoriteRecord;
+}
+
+function createEmptyCommerceRecords(userId: string): CommerceRecords {
+  return {
+    cart: createEmptyCartRecord(userId),
+    favorites: createEmptyFavoriteRecord(userId),
+  };
+}
+
+async function fetchMemberCommerceRecords(
+  userId: string,
+  fallback: {
+    cart?: CartRecord | null;
+    favorites?: FavoriteRecord | null;
+  } = {},
+): Promise<CommerceRecords> {
+  const [favoritesResult, cartResult] = await Promise.allSettled([
+    storefrontApi.getFavorites(),
+    storefrontApi.getCart(),
+  ]);
+
+  return {
+    cart:
+      cartResult.status === "fulfilled"
+        ? cartResult.value
+        : (fallback.cart ?? createEmptyCartRecord(userId)),
+    favorites:
+      favoritesResult.status === "fulfilled"
+        ? favoritesResult.value
+        : (fallback.favorites ?? createEmptyFavoriteRecord(userId)),
+  };
+}
+
 function areTokensEqual(
   left: FirebaseAuthTokens | null,
   right: FirebaseAuthTokens | null,
@@ -337,6 +373,10 @@ function initialState(): StorefrontState {
   const storedCart = storedUser
     ? readScopedStorefrontCache<CartRecord>(CART_STORAGE_KEY, storedUser.id)
     : null;
+  const adminCommerce =
+    storedUser?.role === "admin"
+      ? createEmptyCommerceRecords(storedUser.id)
+      : null;
 
   if (tokens?.idToken) {
     setApiAuthToken(tokens.idToken);
@@ -348,9 +388,9 @@ function initialState(): StorefrontState {
     authLoading: Boolean(tokens) && !storedUser,
     authModalOpen: false,
     authMode: "sign-in",
-    cart: tokens ? storedCart : null,
-    commerceLoading: Boolean(tokens),
-    favorites: tokens ? storedFavorites : null,
+    cart: tokens ? (adminCommerce?.cart ?? storedCart) : null,
+    commerceLoading: Boolean(tokens) && !adminCommerce,
+    favorites: tokens ? (adminCommerce?.favorites ?? storedFavorites) : null,
     tokens,
     user: tokens ? storedUser : null,
   };
@@ -487,23 +527,14 @@ async function fetchSessionBundle(
   setApiAuthToken(tokens.idToken);
 
   const session = await storefrontApi.getAuthSession();
-  const [favoritesResult, cartResult] = await Promise.allSettled([
-    storefrontApi.getFavorites(),
-    storefrontApi.getCart(),
-  ]);
-
-  const favorites =
-    favoritesResult.status === "fulfilled"
-      ? favoritesResult.value
-      : (fallback.favorites ?? createEmptyFavoriteRecord(session.user.id));
-  const cart =
-    cartResult.status === "fulfilled"
-      ? cartResult.value
-      : (fallback.cart ?? createEmptyCartRecord(session.user.id));
+  const commerceRecords =
+    session.user.role === "admin"
+      ? createEmptyCommerceRecords(session.user.id)
+      : await fetchMemberCommerceRecords(session.user.id, fallback);
 
   return {
-    cart,
-    favorites,
+    cart: commerceRecords.cart,
+    favorites: commerceRecords.favorites,
     user: session.user,
   };
 }
@@ -701,6 +732,18 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
     return state.tokens;
   };
 
+  const ensureMemberCommerce = async (): Promise<FirebaseAuthTokens> => {
+    const activeTokens = await ensureAuthenticated();
+
+    if (state.user?.role === "admin") {
+      throw new Error(
+        "Admin accounts manage store activity from Operations, not favorites or cart.",
+      );
+    }
+
+    return activeTokens;
+  };
+
   const completeAuthFlow = async (
     tokens: FirebaseAuthTokens,
     payload: SyncAuthSessionPayload = {},
@@ -709,18 +752,10 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
     setApiAuthToken(tokens.idToken);
 
     const session = await storefrontApi.syncAuthSession(payload);
-    const [favoritesResult, cartResult] = await Promise.allSettled([
-      storefrontApi.getFavorites(),
-      storefrontApi.getCart(),
-    ]);
-    const favorites =
-      favoritesResult.status === "fulfilled"
-        ? favoritesResult.value
-        : createEmptyFavoriteRecord(session.user.id);
-    const cart =
-      cartResult.status === "fulfilled"
-        ? cartResult.value
-        : createEmptyCartRecord(session.user.id);
+    const commerceRecords =
+      session.user.role === "admin"
+        ? createEmptyCommerceRecords(session.user.id)
+        : await fetchMemberCommerceRecords(session.user.id);
 
     const normalizedTokens = {
       ...tokens,
@@ -734,8 +769,8 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
 
     dispatch({
       type: "session/hydrate_success",
-      cart,
-      favorites,
+      cart: commerceRecords.cart,
+      favorites: commerceRecords.favorites,
       tokens: normalizedTokens,
       user: session.user,
     });
@@ -756,7 +791,7 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
       const tokens = await signInWithEmailAndPassword(email.trim(), password);
       await completeAuthFlow(tokens);
       notify({
-        description: "Favorites, cart, and account surfaces are now synced.",
+        description: "Your account session is synced and ready.",
         title: "Signed in successfully",
         tone: "success",
       });
@@ -926,7 +961,7 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
   };
 
   const toggleFavorite = async (productId: string) => {
-    await ensureAuthenticated();
+    await ensureMemberCommerce();
     dispatch({ type: "auth/request" });
 
     try {
@@ -951,7 +986,7 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
   };
 
   const addToCart = async (productVariantId: string, quantity = 1) => {
-    await ensureAuthenticated();
+    await ensureMemberCommerce();
     dispatch({ type: "auth/request" });
 
     try {
@@ -973,7 +1008,7 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
   };
 
   const updateCartQuantity = async (itemId: string, quantity: number) => {
-    await ensureAuthenticated();
+    await ensureMemberCommerce();
     dispatch({ type: "auth/request" });
 
     try {
@@ -992,7 +1027,7 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
   };
 
   const removeCartItem = async (itemId: string) => {
-    await ensureAuthenticated();
+    await ensureMemberCommerce();
     dispatch({ type: "auth/request" });
 
     try {
@@ -1013,7 +1048,7 @@ export function StorefrontProvider({ children }: PropsWithChildren) {
   const checkoutCart = async (
     payload: FinalizeCheckoutPayload,
   ): Promise<CheckoutCartResponse> => {
-    await ensureAuthenticated();
+    await ensureMemberCommerce();
     dispatch({ type: "auth/request" });
 
     try {
